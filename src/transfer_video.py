@@ -4,7 +4,10 @@ from botocore.exceptions import ClientError
 from constants import * 
 from config import *
 import sys
+from dotenv import load_dotenv
 
+# Load environment variables from the .env file
+load_dotenv()
 
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
