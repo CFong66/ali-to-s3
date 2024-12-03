@@ -39,6 +39,19 @@ def upload_metadata_to_dynamodb():
             }
         )
 
+def save_metadata_to_s3(metadata):
+    """Save metadata to S3 as a JSON file."""
+    try:
+        s3_client.put_object(
+            Bucket=LOG_BUCKET,
+            Key=S3_METADATA_PATH,
+            Body=json.dumps(metadata),
+            ContentType='application/json'
+        )
+        print(f"Metadata successfully uploaded to S3: {S3_METADATA_PATH}")
+    except Exception as e:
+        print(f"Error uploading metadata to S3: {e}")
+        sys.exit(1)
 
 def download_video(video_path):
     """Download a video from OSS to S3."""
@@ -117,6 +130,12 @@ def transfer_videos():
     Transfer videos with pending status and retry failed ones.
     Returns True if all videos are successfully transferred; False otherwise.
     """
+    # Fetch metadata from OSS
+    metadata = fetch_metadata_from_oss()
+
+    # Save metadata to S3
+    save_metadata_to_s3(metadata)
+
     pending_videos = get_pending_videos()
     failed_videos = []
 
