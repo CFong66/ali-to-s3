@@ -4,7 +4,6 @@ from botocore.exceptions import ClientError
 from constants import * 
 from config import *
 import sys
-from dotenv import load_dotenv
 
 # Load environment variables from the .env file
 
@@ -77,7 +76,6 @@ def log_transfer_status(video_path, status):
 
 
 def send_notifications():
-    load_dotenv()
     """Send notifications to SNS and SQS."""
     if not SNS_TOPIC_ARN:
         print("Error: SNS_TOPIC_ARN environment variable is not set.")
