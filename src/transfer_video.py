@@ -3,6 +3,7 @@ import json
 from botocore.exceptions import ClientError
 from constants import * 
 from config import *
+import sys
 
 
 def fetch_metadata_from_oss():
@@ -74,6 +75,10 @@ def log_transfer_status(video_path, status):
 
 def send_notifications():
     """Send notifications to SNS and SQS."""
+    if not SNS_TOPIC_ARN:
+        print("Error: SNS_TOPIC_ARN environment variable is not set.")
+        sys.exit(1)
+
     sns_client.publish(
         TopicArn=SNS_TOPIC_ARN,
         Message="Video transfer completed"
