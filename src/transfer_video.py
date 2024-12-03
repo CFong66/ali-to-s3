@@ -7,7 +7,7 @@ import sys
 from dotenv import load_dotenv
 
 # Load environment variables from the .env file
-load_dotenv()
+
 
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
@@ -77,6 +77,7 @@ def log_transfer_status(video_path, status):
 
 
 def send_notifications():
+    load_dotenv()
     """Send notifications to SNS and SQS."""
     if not SNS_TOPIC_ARN:
         print("Error: SNS_TOPIC_ARN environment variable is not set.")
