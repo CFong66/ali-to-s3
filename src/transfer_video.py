@@ -2,23 +2,8 @@ import json
 import subprocess
 import sys
 import boto3
-
-# Initialize AWS and DynamoDB clients
-dynamodb_client = boto3.client('dynamodb', region_name='ap-southeast-2')
-sns_client = boto3.client('sns', region_name='ap-southeast-2')
-sqs_client = boto3.client('sqs', region_name='ap-southeast-2')
-s3_client = boto3.client('s3', region_name='ap-southeast-2')
-
-# Configuration for your DynamoDB and S3 bucket
-DYNAMODB_TABLE = 'your-dynamodb-table-name'
-VIDEO_BUCKET = 'your-video-bucket-name'
-VIDEO_BUCKET_FOLDER = 'your-video-folder-name'
-LOG_BUCKET = 'your-log-bucket-name'
-
-# Environment variables (replace with actual values or use environment vars)
-SNS_TOPIC_ARN = 'your-sns-topic-arn'
-SQS_QUEUE_URL = 'your-sqs-queue-url'
-
+from constants import *
+from config import *
 
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
@@ -120,7 +105,7 @@ def send_notifications(completed=False):
             QueueUrl=SQS_QUEUE_URL,
             MessageBody="Transfer completed"
         )
-        
+
         sns_client.publish(
             TopicArn=SNS_TOPIC_ARN,
             Message="Video transfer completed"
