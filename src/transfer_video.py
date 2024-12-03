@@ -44,7 +44,7 @@ def download_video(video_path):
     """Download a video from OSS to S3."""
     try:
         subprocess.run(
-            ['rclone', 'copy', f'aliyun:test-ali-video/{video_path}', f's3://{VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'],
+            ['rclone', 'copy', f'aliyun:test-ali-video/{video_path}', f's3://{VIDEO_BUCKET}/{video_path}'],
             check=True
         )
         return True
