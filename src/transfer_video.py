@@ -126,4 +126,9 @@ def transfer_videos():
 
 if __name__ == '__main__':
     job_success = transfer_videos()
-    send_notifications(completed=job_success)
+    
+    # Only send notifications if the job is successful
+    if job_success:
+        send_notifications(completed=True)
+    else:
+        print("Video transfer failed. No notifications will be sent.")
