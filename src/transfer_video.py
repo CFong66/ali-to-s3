@@ -75,24 +75,33 @@ def log_transfer_status(video_path, status):
     )
 
 
-def send_notifications():
-    """Send notifications to SNS and SQS."""
+def send_notifications(completed=False):
+    """Send notifications to SNS and optionally to SQS."""
     if not SNS_TOPIC_ARN:
         print("Error: SNS_TOPIC_ARN environment variable is not set.")
         sys.exit(1)
 
-    sns_client.publish(
-        TopicArn=SNS_TOPIC_ARN,
-        Message="Video transfer completed"
-    )
-    sqs_client.send_message(
-        QueueUrl=SQS_QUEUE_URL,
-        MessageBody="Transfer completed"
-    )
+    if completed:
+        if not SQS_QUEUE_URL:
+            print("Error: SQS_QUEUE_URL environment variable is not set.")
+            sys.exit(1)
+
+        sqs_client.send_message(
+            QueueUrl=SQS_QUEUE_URL,
+            MessageBody="Transfer completed"
+        )
+
+        sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Message="Video transfer completed"
+        )
 
 
 def transfer_videos():
-    """Transfer videos with pending status and retry failed ones."""
+    """
+    Transfer videos with pending status and retry failed ones.
+    Returns True if all videos are successfully transferred; False otherwise.
+    """
     pending_videos = get_pending_videos()
     failed_videos = []
 
@@ -111,7 +120,10 @@ def transfer_videos():
     # Retry failed videos
     retry_failed_videos(failed_videos)
 
+    # Return True if no videos remain in the failed_videos list
+    return len(failed_videos) == 0
+
 
 if __name__ == '__main__':
-    transfer_videos()
-    send_notifications()
+    job_success = transfer_videos()
+    send_notifications(completed=job_success)
