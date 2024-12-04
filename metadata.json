@@ -1,0 +1,83 @@
+[
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7API_Gateway_Integration_with_Microservices.mp4",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7API_Gateway_Integration_with_Microservices.mp4",
+    "Size": 704085,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:05.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7API_Management_in_the_Cloud.mp4",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7API_Management_in_the_Cloud.mp4",
+    "Size": 704085,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:04.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7Advanced_Jenkins_Pipelines_Techniques.mp4",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7Advanced_Jenkins_Pipelines_Techniques.mp4",
+    "Size": 704085,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:06.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7Building Microservices with Docker and Kubernetes.rmvb",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7Building Microservices with Docker and Kubernetes.rmvb",
+    "Size": 210787736,
+    "MimeType": "application/vnd.rn-realmedia-vbr",
+    "ModTime": "2024-12-01T00:26:42.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7DevOps Metrics and KPIs.rmvb",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7DevOps Metrics and KPIs.rmvb",
+    "Size": 245970125,
+    "MimeType": "application/vnd.rn-realmedia-vbr",
+    "ModTime": "2024-12-01T00:27:22.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7Docker_Compose_for_Multi-Container_Applications.mp4",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7Docker_Compose_for_Multi-Container_Applications.mp4",
+    "Size": 6975774,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:29.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "DevOps\u5168\u6808\u73ed\u00b7Jenkins Pipelines for Continuous Integration.rmvb",
+    "Name": "DevOps\u5168\u6808\u73ed\u00b7Jenkins Pipelines for Continuous Integration.rmvb",
+    "Size": 239202320,
+    "MimeType": "application/vnd.rn-realmedia-vbr",
+    "ModTime": "2024-12-01T00:27:33.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "Web\u5168\u6808\u73ed12\u671f\u00b7Java\u65b9\u5411_Building_REST_APIs_with_Spring_Boot.mp4",
+    "Name": "Web\u5168\u6808\u73ed12\u671f\u00b7Java\u65b9\u5411_Building_REST_APIs_with_Spring_Boot.mp4",
+    "Size": 6975774,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:32.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  },
+  {
+    "Path": "Web\u5168\u6808\u73ed12\u671f\u00b7Java\u65b9\u5411_Microservices_with_Java_and_Spring_Cloud.mp4",
+    "Name": "Web\u5168\u6808\u73ed12\u671f\u00b7Java\u65b9\u5411_Microservices_with_Java_and_Spring_Cloud.mp4",
+    "Size": 6975774,
+    "MimeType": "video/mp4",
+    "ModTime": "2024-12-01T00:19:34.000000000Z",
+    "IsDir": false,
+    "Tier": "STANDARD"
+  }
+]

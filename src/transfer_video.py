@@ -61,7 +61,7 @@ def download_video(video_path):
              'rclone', 
              'copy', 
              f'aliyun:test-ali-video/{video_path}', 
-             f's3:{VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'
+             f'aws-s3:{VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'
             ],
             check=True
         )
