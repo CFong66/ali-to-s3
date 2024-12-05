@@ -20,7 +20,7 @@ def update_video_status(video_id, status):
     """Update the status of a video in DynamoDB."""
     dynamodb_client.update_item(
         TableName=DYNAMODB_TABLE,
-        Key={'Video_id': {'S': video_id}},
+        Key={'video_id': {'S': video_id}},
         UpdateExpression='SET #Transfer_Status = :status',
         ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status"},
         ExpressionAttributeValues={':status': {'S': status}}
@@ -42,7 +42,7 @@ def upload_metadata_to_dynamodb():
         dynamodb_client.put_item(
             TableName=DYNAMODB_TABLE,
             Item={
-                "Video_id": {"S": video_id},                      # File name as the primary key
+                "video_id": {"S": video_id},                      # File name as the primary key
                 "Transfer_Status": {"S": "pending"},              # Default transfer status
                 "Path": {"S": video_id},                          # Human-readable path
                 "Size": {"N": str(video["Size"])},                # Size of the video file
