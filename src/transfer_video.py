@@ -5,9 +5,9 @@ import boto3
 from constants import *
 from config import *
 
-def decode_unicode(text):
-    """Decode Unicode escape sequences into human-readable characters."""
-    return text.encode("utf-8").decode("unicode_escape")
+# def decode_unicode(text):
+#     """Decode Unicode escape sequences into human-readable characters."""
+#     return text.encode("utf-8").decode("unicode_escape")
 
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
@@ -33,10 +33,10 @@ def upload_metadata_to_dynamodb():
     
     for video in metadata:
         # Decode the Unicode-encoded Path field
-        video_id = decode_unicode(video["Path"])  # Use the decoded file name as video_id
+        # video_id = decode_unicode(video["Path"])  # Use the decoded file name as video_id
 
         # Update metadata to use a clean file name
-        video["Path"] = video_id
+        video_id = video["Path"] 
 
         # Add metadata to DynamoDB with initial transfer status
         dynamodb_client.put_item(
