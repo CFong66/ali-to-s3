@@ -5,6 +5,10 @@ import boto3
 from constants import *
 from config import *
 
+def decode_unicode(text):
+    """Decode Unicode escape sequences into human-readable characters."""
+    return text.encode("utf-8").decode("unicode_escape")
+
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
     result = subprocess.run(['rclone', 'lsjson', 'aliyun:test-ali-video'], stdout=subprocess.PIPE, check=True)
@@ -16,9 +20,9 @@ def update_video_status(video_id, status):
     """Update the status of a video in DynamoDB."""
     dynamodb_client.update_item(
         TableName=DYNAMODB_TABLE,
-        Key={'video_id': {'S': video_id}},
-        UpdateExpression='SET #status = :status',
-        ExpressionAttributeNames={'#status': 'status'},
+        Key={'Video_id': {'S': video_id}},
+        UpdateExpression='SET #Transfer_Status = :status',
+        ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status"},
         ExpressionAttributeValues={':status': {'S': status}}
     )
 
@@ -28,24 +32,35 @@ def upload_metadata_to_dynamodb():
     metadata = fetch_metadata_from_oss()
     
     for video in metadata:
-        video_id = video['Path']  # Assuming the video path is the unique identifier
-        # Add metadata to DynamoDB and set the status to 'pending'
+        # Decode the Unicode-encoded Path field
+        video_id = decode_unicode(video["Path"])  # Use the decoded file name as video_id
+
+        # Update metadata to use a clean file name
+        video["Path"] = video_id
+
+        # Add metadata to DynamoDB with initial transfer status
         dynamodb_client.put_item(
             TableName=DYNAMODB_TABLE,
             Item={
-                'video_id': {'S': video_id},
-                'status': {'S': 'pending'},  # Default status
-                'metadata': {'S': json.dumps(video)}  # Store full metadata if needed
+                "Video_id": {"S": video_id},                      # File name as the primary key
+                "Transfer_Status": {"S": "pending"},              # Default transfer status
+                "Path": {"S": video_id},                          # Human-readable path
+                "Size": {"N": str(video["Size"])},                # Size of the video file
+                "MimeType": {"S": video["MimeType"]},             # MIME type of the file
+                "ModTime": {"S": video["ModTime"]},               # Last modified time
+                "isDir": {"BOOL": video["IsDir"]},                # Is it a directory? (Boolean)
+                "Tier": {"S": video["Tier"]}                      # Storage tier (e.g., STANDARD)
             }
         )
 
 def save_metadata_to_s3(metadata):
-    """Save metadata to S3 as a JSON file."""
+    """Save metadata to S3 as a JSON file with proper encoding for Chinese characters."""
     try:
+        # Use json.dumps with ensure_ascii=False to preserve Chinese characters
         s3_client.put_object(
-            Bucket=LOG_BUCKET,
+            Bucket=AWS_LOG_BUCKET,
             Key=S3_METADATA_PATH,
-            Body=json.dumps(metadata),
+            Body=json.dumps(metadata, ensure_ascii=False),  # Preserve Chinese characters
             ContentType='application/json'
         )
         print(f"Metadata successfully uploaded to S3: {S3_METADATA_PATH}")
@@ -60,8 +75,8 @@ def download_video(video_path):
             [
              'rclone', 
              'copy', 
-             f'aliyun:test-ali-video/{video_path}', 
-             f'aws-s3:{VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'
+             f'aliyun:{OSS_BUCKET}/{video_path}', 
+             f'aws_s3:{AWS_VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'
             ],
             check=True
         )
@@ -75,8 +90,8 @@ def get_pending_videos():
     """Retrieve video metadata with 'pending' status from DynamoDB."""
     response = dynamodb_client.scan(
         TableName=DYNAMODB_TABLE,
-        FilterExpression="#status = :pending",
-        ExpressionAttributeNames={'#status': 'status'},
+        FilterExpression="#Transfer_Status = :pending",
+        ExpressionAttributeNames={'#Transfer_Status': 'Transfer_Status'},
         ExpressionAttributeValues={':pending': {'S': 'pending'}}
     )
     return response.get('Items', [])
@@ -89,9 +104,10 @@ def retry_failed_videos(failed_videos):
         success = download_video(video_path)
         if success:
             update_video_status(video_path, 'completed')
-            log_transfer_status(video_path, 'completed')
+            # log_transfer_status(video_path, 'completed')
         else:
-            log_transfer_status(video_path, 'failed')
+            update_video_status(video_path, 'failed')
+            # log_transfer_status(video_path, 'failed')
 
 
 def log_transfer_status(video_path, status):
@@ -102,7 +118,7 @@ def log_transfer_status(video_path, status):
         'message': f"Transfer {status} for {video_path}"
     }
     s3_client.put_object(
-        Bucket=LOG_BUCKET,
+        Bucket=AWS_LOG_BUCKET,
         Key=f"logs/{video_path}.json",
         Body=json.dumps(log_entry)
     )
@@ -151,10 +167,10 @@ def transfer_videos():
 
         if success:
             update_video_status(video_path, 'completed')
-            log_transfer_status(video_path, 'completed')
+            # log_transfer_status(video_path, 'completed')
         else:
             update_video_status(video_path, 'failed')
-            log_transfer_status(video_path, 'failed')
+            # log_transfer_status(video_path, 'failed')
             failed_videos.append(video)
 
     # Retry failed videos
