@@ -4,6 +4,7 @@ import sys
 import boto3
 from constants import *
 from config import *
+import constants
 
 # def decode_unicode(text):
 #     """Decode Unicode escape sequences into human-readable characters."""
@@ -76,7 +77,8 @@ def download_video(video_path):
              'rclone', 
              'copy', 
              f'aliyun:{OSS_BUCKET}/{video_path}', 
-             f'aws_s3:{AWS_VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}/{video_path}'
+             f'aws_s3:{AWS_VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}',
+             '-vv'
             ],
             check=True
         )
@@ -110,41 +112,55 @@ def retry_failed_videos(failed_videos):
             # log_transfer_status(video_path, 'failed')
 
 
-def log_transfer_status(video_path, status):
-    """Log the transfer status to S3."""
-    log_entry = {
-        'video_id': video_path,
-        'status': status,
-        'message': f"Transfer {status} for {video_path}"
-    }
-    s3_client.put_object(
-        Bucket=AWS_LOG_BUCKET,
-        Key=f"logs/{video_path}.json",
-        Body=json.dumps(log_entry)
-    )
+# def log_transfer_status(video_path, status):
+#     """Log the transfer status to S3."""
+#     log_entry = {
+#         'video_id': video_path,
+#         'status': status,
+#         'message': f"Transfer {status} for {video_path}"
+#     }
+#     s3_client.put_object(
+#         Bucket=AWS_LOG_BUCKET,
+#         Key=f"logs/{video_path}.json",
+#         Body=json.dumps(log_entry)
+#     )
 
 
-def send_notifications(completed=False):
-    """Send notifications to SNS and optionally to SQS."""
-    if not SNS_TOPIC_ARN:
-        print("Error: SNS_TOPIC_ARN environment variable is not set.")
-        sys.exit(1)
-
-    # Only send SQS message if the transfer was successful
+def send_notifications(completed=False, enable_notifications=False):
+    # Check if the job is completed and SNS_TOPIC_ARN is set
     if completed:
-        if not SQS_QUEUE_URL:
-            print("Error: SQS_QUEUE_URL environment variable is not set.")
+        # Check SNS_TOPIC_ARN from constants.py
+        sns_topic_arn = constants.SNS_TOPIC_ARN
+
+        if not sns_topic_arn:
+            print("Error: SNS_TOPIC_ARN in constants.py is not set.")
             sys.exit(1)
 
+        # Notify via SNS (this will always happen when completed)
+        sns_client.publish(
+            TopicArn=sns_topic_arn,
+            Message="Video transfer completed successfully."
+        )
+        print("Notification sent to SNS topic.")
+    
+    # Only send SQS message if the transfer was successful and enable_notifications is True
+    if enable_notifications:
+        # Check SQS_QUEUE_URL from constants.py
+        sqs_queue_url = constants.SQS_QUEUE_URL
+        
+        if not sqs_queue_url:
+            print("Error: SQS_QUEUE_URL in constants.py is not set.")
+            sys.exit(1)
+
+        # Send message to SQS to trigger Lambda
         sqs_client.send_message(
-            QueueUrl=SQS_QUEUE_URL,
+            QueueUrl=sqs_queue_url,
             MessageBody="Transfer completed"
         )
+        print("Message sent to SQS queue.")
+    else:
+        print("SQS notification is disabled by switch. Skipping message sending.")
 
-        sns_client.publish(
-            TopicArn=SNS_TOPIC_ARN,
-            Message="Video transfer completed"
-    )
 
 
 def transfer_videos():
@@ -188,6 +204,6 @@ if __name__ == '__main__':
     
     # Only send notifications if the job is successful
     if job_success:
-        send_notifications(completed=True)
+        send_notifications(completed=True, enable_notifications=False)
     else:
         print("Video transfer failed. No notifications will be sent.")
