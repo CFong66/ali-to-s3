@@ -10,3 +10,4 @@ print(f"SNS Topic ARN: {sns_topic_arn}")
 print(f"SQS Queue URL: {sqs_queue_url}")
 print(f"Ali Access Key ID: {ali_access_key_id}")
 print(f"Ali Access Key Secret: {ali_access_key_secret}")
+print(os.environ)  # Check if SNS_TOPIC_ARN and SQS_QUEUE_URL are present
