@@ -4,3 +4,8 @@ AWS_LOG_BUCKET = 'ali-vt-log-bucket'
 DYNAMODB_TABLE = 'video_metadata'
 VIDEO_BUCKET_FOLDER = 'ali-videos'
 S3_METADATA_PATH = 'video-metadata/metadata.json' 
+
+
+
+
+
