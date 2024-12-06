@@ -11,3 +11,6 @@ print(f"SQS Queue URL: {sqs_queue_url}")
 print(f"Ali Access Key ID: {ali_access_key_id}")
 print(f"Ali Access Key Secret: {ali_access_key_secret}")
 print(os.environ)  # Check if SNS_TOPIC_ARN and SQS_QUEUE_URL are present
+
+SNS_TOPIC_ARN = "arn:aws:sns:ap-southeast-2:680672213275:ali-vt-s3-notification"
+SQS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/680672213275/ec2-control-queue"

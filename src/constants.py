@@ -2,11 +2,8 @@
 import os
 
 # Retrieve SNS_TOPIC_ARN and SQS_QUEUE_URL from environment variables
-# SNS_TOPIC_ARN = "arn:aws:sns:ap-southeast-2:680672213275:ali-vt-s3-notification"
-# SQS_QUEUE_URL = "https://sqs.ap-southeast-2.amazonaws.com/680672213275/ec2-control-queue"
 
-SNS_TOPIC_ARN = ""
-SQS_QUEUE_URL = ""
+
 
 OSS_BUCKET = 'test-ali-video'
 AWS_VIDEO_BUCKET = 'ali-video-storing-bucket'

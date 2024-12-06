@@ -77,8 +77,7 @@ def download_video(video_path):
              'rclone', 
              'copy', 
              f'aliyun:{OSS_BUCKET}/{video_path}', 
-             f'aws_s3:{AWS_VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}',
-             '-vv'
+             f'aws_s3:{AWS_VIDEO_BUCKET}/{VIDEO_BUCKET_FOLDER}'
             ],
             check=True
         )
