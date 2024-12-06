@@ -134,7 +134,6 @@ def get_pending_videos():
     )
     return response.get('Items', [])
 
-
 def retry_failed_videos(failed_videos):
     """Retry downloading videos with 'failed' status."""
     for video in failed_videos:

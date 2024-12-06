@@ -3,7 +3,6 @@ from utils import *
 from constants import *
 from config import *
 
-
 def transfer_videos(enable_notifications=True):
     """
     Transfer videos with pending status and retry failed ones.
