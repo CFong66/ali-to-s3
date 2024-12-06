@@ -1,7 +1,6 @@
 import json
 import subprocess
 import sys
-import boto3
 from constants import *
 from config import *
 import constants
