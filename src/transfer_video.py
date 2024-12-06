@@ -202,6 +202,6 @@ if __name__ == '__main__':
     
     # Only send notifications if the job is successful
     if job_success:
-        send_notifications(completed=True, enable_notifications=False)
+        send_notifications(completed=True, enable_notifications=True)
     else:
         print("Video transfer failed. No notifications will be sent.")
