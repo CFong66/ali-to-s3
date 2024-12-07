@@ -83,7 +83,7 @@ if __name__ == '__main__':
     upload_metadata_to_dynamodb()
 
     # Start video transfer process with notifications enabled
-    job_success = transfer_videos(enable_notifications=True)
+    job_success = transfer_videos(enable_notifications=False)
 
     # Print result
     if job_success:
