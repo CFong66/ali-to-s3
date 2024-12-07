@@ -79,50 +79,77 @@ def download_video(video_path):
         print(f"Error during video transfer: {e}")
         return False
 
-def send_notifications(completed=False, enable_notifications=False, message=""):
-    # Check if the job is completed and SNS_TOPIC_ARN is set
-    if completed:
-        # Check SNS_TOPIC_ARN from constants.py
-        sns_topic_arn = constants.SNS_TOPIC_ARN
+# def send_notifications(completed=False, enable_notifications=False, message=""):
+#     # Check if the job is completed and SNS_TOPIC_ARN is set
+#     if completed:
+#         # Check SNS_TOPIC_ARN from constants.py
+#         sns_topic_arn = constants.SNS_TOPIC_ARN
 
-        if not sns_topic_arn:
-            print("Error: SNS_TOPIC_ARN in constants.py is not set.")
-            sys.exit(1)
+#         if not sns_topic_arn:
+#             print("Error: SNS_TOPIC_ARN in constants.py is not set.")
+#             sys.exit(1)
 
-        # Notify via SNS (this will always happen when completed)
-        sns_client.publish(
-            TopicArn=sns_topic_arn,
-            Message="Video transfer completed successfully."
-        )
-        print("Notification sent to SNS topic.")
+#         # Notify via SNS (this will always happen when completed)
+#         sns_client.publish(
+#             TopicArn=sns_topic_arn,
+#             Message="Video transfer completed successfully."
+#         )
+#         print("Notification sent to SNS topic.")
     
-    # Send progress updates to SNS if progress notifications are enabled
-    if enable_notifications and message:
-        sns_topic_arn = constants.SNS_TOPIC_ARN
-        if sns_topic_arn:
-            sns_client.publish(
-                TopicArn=sns_topic_arn,
-                Message=message
-            )
-            print("Progress update sent to SNS.")
+#     # Send progress updates to SNS if progress notifications are enabled
+#     if enable_notifications and message:
+#         sns_topic_arn = constants.SNS_TOPIC_ARN
+#         if sns_topic_arn:
+#             sns_client.publish(
+#                 TopicArn=sns_topic_arn,
+#                 Message=message
+#             )
+#             print("Progress update sent to SNS.")
 
-    # Only send SQS message if enable_notifications is True
-    if enable_notifications:
-        # Check SQS_QUEUE_URL from constants.py
-        sqs_queue_url = constants.SQS_QUEUE_URL
+#     # Only send SQS message if enable_notifications is True
+#     if enable_notifications:
+#         # Check SQS_QUEUE_URL from constants.py
+#         sqs_queue_url = constants.SQS_QUEUE_URL
         
-        if not sqs_queue_url:
-            print("Error: SQS_QUEUE_URL in constants.py is not set.")
-            sys.exit(1)
+#         if not sqs_queue_url:
+#             print("Error: SQS_QUEUE_URL in constants.py is not set.")
+#             sys.exit(1)
 
-        # Send message to SQS to trigger Lambda
+#         # Send message to SQS to trigger Lambda
+#         sqs_client.send_message(
+#             QueueUrl=sqs_queue_url,
+#             MessageBody="Transfer completed"
+#         )
+#         print("Message sent to SQS queue.")
+#     else:
+#         print("SQS notification is disabled by switch. Skipping message sending.")
+
+def send_sns_notification(percentage):
+    """
+    Sends an SNS notification for progress percentage.
+    """
+    subject = f"Video Transfer Progress: {percentage}% Complete"
+    message = f"The video transfer process has reached {percentage}% completion."
+    sns_client.publish(
+        TopicArn=SNS_TOPIC_ARN,
+        Subject=subject,
+        Message=message
+    )
+    print(f"SNS Notification sent: {subject}")
+
+def send_sqs_notification(status, enable_notification=True):
+    """
+    Sends an SQS message to notify Lambda about the transfer process status.
+    Can disable notification with `enable_notification`.
+    """
+    if enable_notification:
         sqs_client.send_message(
-            QueueUrl=sqs_queue_url,
-            MessageBody="Transfer completed"
+            QueueUrl=SQS_QUEUE_URL,
+            MessageBody=f"Video transfer process completed with status: {status}"
         )
-        print("Message sent to SQS queue.")
+        print(f"SQS Notification sent: {status}")
     else:
-        print("SQS notification is disabled by switch. Skipping message sending.")
+        print(f"SQS Notification skipped: {status}")
 
 def get_pending_videos():
     """Retrieve video metadata with 'pending' status from DynamoDB."""
