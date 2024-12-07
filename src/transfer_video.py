@@ -50,7 +50,7 @@ def transfer_videos(enable_notifications=True):
             progress_threshold += 10
 
         # Simulate delay (optional)
-        time.sleep(1)  # Simulate delay for each video transfer
+        time.sleep(0.5)  # Simulate delay for each video transfer
 
     # Retry failed videos
     for video in failed_videos[:]:
