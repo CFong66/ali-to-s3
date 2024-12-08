@@ -26,9 +26,6 @@ def upload_metadata_to_dynamodb():
     metadata = fetch_metadata_from_oss()
     
     for video in metadata:
-        # Decode the Unicode-encoded Path field
-        # video_id = decode_unicode(video["Path"])  # Use the decoded file name as video_id
-
         # Update metadata to use a clean file name
         video_id = video["Path"] 
 
@@ -78,51 +75,6 @@ def download_video(video_path):
     except subprocess.CalledProcessError as e:
         print(f"Error during video transfer: {e}")
         return False
-
-# def send_notifications(completed=False, enable_notifications=False, message=""):
-#     # Check if the job is completed and SNS_TOPIC_ARN is set
-#     if completed:
-#         # Check SNS_TOPIC_ARN from constants.py
-#         sns_topic_arn = constants.SNS_TOPIC_ARN
-
-#         if not sns_topic_arn:
-#             print("Error: SNS_TOPIC_ARN in constants.py is not set.")
-#             sys.exit(1)
-
-#         # Notify via SNS (this will always happen when completed)
-#         sns_client.publish(
-#             TopicArn=sns_topic_arn,
-#             Message="Video transfer completed successfully."
-#         )
-#         print("Notification sent to SNS topic.")
-    
-#     # Send progress updates to SNS if progress notifications are enabled
-#     if enable_notifications and message:
-#         sns_topic_arn = constants.SNS_TOPIC_ARN
-#         if sns_topic_arn:
-#             sns_client.publish(
-#                 TopicArn=sns_topic_arn,
-#                 Message=message
-#             )
-#             print("Progress update sent to SNS.")
-
-#     # Only send SQS message if enable_notifications is True
-#     if enable_notifications:
-#         # Check SQS_QUEUE_URL from constants.py
-#         sqs_queue_url = constants.SQS_QUEUE_URL
-        
-#         if not sqs_queue_url:
-#             print("Error: SQS_QUEUE_URL in constants.py is not set.")
-#             sys.exit(1)
-
-#         # Send message to SQS to trigger Lambda
-#         sqs_client.send_message(
-#             QueueUrl=sqs_queue_url,
-#             MessageBody="Transfer completed"
-#         )
-#         print("Message sent to SQS queue.")
-#     else:
-#         print("SQS notification is disabled by switch. Skipping message sending.")
 
 def send_sns_notification(percentage):
     """
