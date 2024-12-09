@@ -14,28 +14,28 @@ def fetch_metadata_from_oss():
     return metadata
 
 def update_video_status(video_id, status, transfer_time=None):
-    """Update the status of a video in DynamoDB, including the transfer time."""
-    
-    # Initialize the update expression and values
+    """Update the status and transfer time of a video in DynamoDB."""
+    # Prepare the update expression dynamically
     update_expression = 'SET #Transfer_Status = :status'
     expression_attribute_values = {':status': {'S': status}}
     
-    # If transfer_time is provided, add it to the update expression and values
+    # If transfer time is provided, update the transfer time as well
     if transfer_time is not None:
-        update_expression += ', #Transfer_Time = :time'
-        expression_attribute_values[':time'] = {'N': str(transfer_time)}  # Convert transfer_time to string for DynamoDB
-    
-    # Perform the update in DynamoDB
+        update_expression += ', #Transfer_Time = :transfer_time'
+        expression_attribute_values[':transfer_time'] = {'N': str(transfer_time)}  # Transfer time in seconds
+
+    # Perform the update operation
     dynamodb_client.update_item(
         TableName=DYNAMODB_TABLE,
         Key={'video_id': {'S': video_id}},
         UpdateExpression=update_expression,
         ExpressionAttributeNames={
-            "#Transfer_Status": "Transfer_Status",
-            "#Transfer_Time": "Transfer_Time"  # Add the transfer_time attribute name
-        },
+            "#Transfer_Status": "Transfer_Status", 
+            "#Transfer_Time": "Transfer_Time"
+            },
         ExpressionAttributeValues=expression_attribute_values
     )
+
 
 def upload_metadata_to_dynamodb():
     """Fetch metadata from OSS and upload it to DynamoDB with initial status 'pending'."""
