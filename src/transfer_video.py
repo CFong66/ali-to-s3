@@ -28,6 +28,12 @@ def transfer_videos(enable_notifications=True):
 
     for video in pending_videos:
         video_path = video['video_id']['S']
+
+        # Log system metrics (CPU, Memory, Disk usage) at the start of each transfer
+        log_to_cloudwatch('CPUUsage', psutil.cpu_percent(), video_path)
+        log_to_cloudwatch('MemoryUsage', psutil.virtual_memory().percent, video_path)
+        log_to_cloudwatch('DiskUsage', psutil.disk_usage('/').percent, video_path)
+
         success = download_video(video_path)
 
         if success:
@@ -48,6 +54,9 @@ def transfer_videos(enable_notifications=True):
         if progress >= progress_threshold:
             send_sns_notification(progress)
             progress_threshold += 10
+
+        # Log transfer progress as a metric
+        log_to_cloudwatch('TransferProgress', progress, video_path)
 
         # Simulate delay (optional)
         time.sleep(0.5)  # Simulate delay for each video transfer

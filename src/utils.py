@@ -1,9 +1,11 @@
 import json
 import subprocess
 import sys
+import time
 from constants import *
 from config import *
 import constants
+import psutil
 
 def fetch_metadata_from_oss():
     """Fetch metadata from Ali Cloud OSS using rclone."""
@@ -124,3 +126,41 @@ def retry_failed_videos(failed_videos):
         else:
             update_video_status(video_path, 'failed')
             # log_transfer_status(video_path, 'failed')
+
+# Function to log metrics to CloudWatch Log Stream
+def log_to_cloudwatch(metric_name, value, video_path=None):
+    """
+    Push system resource metrics (CPU, memory, etc.) and video transfer progress to CloudWatch.
+    Logs the metrics to a specific CloudWatch Log Group and Log Stream.
+    """
+    # Prepare log message
+    log_message = {
+        'timestamp': int(time.time() * 1000),  # Milliseconds
+        'message': f"Metric: {metric_name}, Value: {value}, VideoPath: {video_path if video_path else 'N/A'}"
+    }
+    
+    try:
+        # Retrieve or create log stream
+        response = logs_client.describe_log_streams(
+            logGroupName=LOG_GROUP_NAME,
+            logStreamNamePrefix=LOG_STREAM_NAME
+        )
+        
+        # If log stream doesn't exist, create it
+        if not response['logStreams']:
+            logs_client.create_log_stream(
+                logGroupName=LOG_GROUP_NAME,
+                logStreamName=LOG_STREAM_NAME
+            )
+        
+        # Push the log message to CloudWatch Log Stream
+        logs_client.put_log_events(
+            logGroupName=LOG_GROUP_NAME,
+            logStreamName=LOG_STREAM_NAME,
+            logEvents=[log_message]
+        )
+
+        print(f"Successfully logged metric: {metric_name}, Value: {value}")
+
+    except Exception as e:
+        print(f"Error logging to CloudWatch Logs: {e}")
