@@ -29,19 +29,28 @@ def transfer_videos(enable_notifications=True):
     for video in pending_videos:
         video_path = video['video_id']['S']
 
+        # Track the start time of the transfer
+        start_time = time.time()
+
         # Log system metrics (CPU, Memory, Disk usage) at the start of each transfer
-        log_to_cloudwatch('CPUUsage', psutil.cpu_percent(), video_path)
-        log_to_cloudwatch('MemoryUsage', psutil.virtual_memory().percent, video_path)
-        log_to_cloudwatch('DiskUsage', psutil.disk_usage('/').percent, video_path)
+        # log_to_cloudwatch('CPUUsage', psutil.cpu_percent(), video_path)
+        # log_to_cloudwatch('MemoryUsage', psutil.virtual_memory().percent, video_path)
+        # log_to_cloudwatch('DiskUsage', psutil.disk_usage('/').percent, video_path)
 
         success = download_video(video_path)
 
+        # Track the end time after the transfer completes
+        end_time = time.time()
+        
+        # Calculate transfer time
+        transfer_time = end_time - start_time
+
         if success:
             completed_videos += 1
-            update_video_status(video_path, 'completed')
+            update_video_status(video_path, 'completed', transfer_time)
             print(f"Transfer of video {video_path} completed successfully.")
         else:
-            update_video_status(video_path, 'failed')
+            update_video_status(video_path, 'failed', transfer_time)
             print(f"Transfer of video {video_path} failed.")
             retries[video_path] = retries.get(video_path, 0) + 1
             if retries[video_path] > retry_limit:
@@ -56,7 +65,7 @@ def transfer_videos(enable_notifications=True):
             progress_threshold += 10
 
         # Log transfer progress as a metric
-        log_to_cloudwatch('TransferProgress', progress, video_path)
+        # log_to_cloudwatch('TransferProgress', progress, video_path)
 
         # Simulate delay (optional)
         time.sleep(0.5)  # Simulate delay for each video transfer
@@ -66,11 +75,21 @@ def transfer_videos(enable_notifications=True):
         video_path = video['video_id']['S']
         while retries.get(video_path, 0) <= retry_limit:
             print(f"Retrying video: {video_path}")
+
+            # Track start time for retries
+            start_time = time.time()
             success = download_video(video_path)
+            
+            # Track end time after retry completes
+            end_time = time.time()
+            
+            # Calculate transfer time
+            transfer_time = end_time - start_time
+            
             if success:
                 completed_videos += 1
                 failed_videos.remove(video)
-                update_video_status(video_path, 'completed')
+                update_video_status(video_path, 'completed',transfer_time)
                 break
             retries[video_path] += 1
         if retries[video_path] > retry_limit:
