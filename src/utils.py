@@ -13,14 +13,28 @@ def fetch_metadata_from_oss():
     metadata = json.loads(result.stdout.decode('utf-8'))
     return metadata
 
-def update_video_status(video_id, status):
-    """Update the status of a video in DynamoDB."""
+def update_video_status(video_id, status, transfer_time=None):
+    """Update the status of a video in DynamoDB, including the transfer time."""
+    
+    # Initialize the update expression and values
+    update_expression = 'SET #Transfer_Status = :status'
+    expression_attribute_values = {':status': {'S': status}}
+    
+    # If transfer_time is provided, add it to the update expression and values
+    if transfer_time is not None:
+        update_expression += ', #Transfer_Time = :time'
+        expression_attribute_values[':time'] = {'N': str(transfer_time)}  # Convert transfer_time to string for DynamoDB
+    
+    # Perform the update in DynamoDB
     dynamodb_client.update_item(
         TableName=DYNAMODB_TABLE,
         Key={'video_id': {'S': video_id}},
-        UpdateExpression='SET #Transfer_Status = :status',
-        ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status"},
-        ExpressionAttributeValues={':status': {'S': status}}
+        UpdateExpression=update_expression,
+        ExpressionAttributeNames={
+            "#Transfer_Status": "Transfer_Status",
+            "#Transfer_Time": "Transfer_Time"  # Add the transfer_time attribute name
+        },
+        ExpressionAttributeValues=expression_attribute_values
     )
 
 def upload_metadata_to_dynamodb():
@@ -37,6 +51,7 @@ def upload_metadata_to_dynamodb():
             Item={
                 "video_id": {"S": video_id},                      # File name as the primary key
                 "Transfer_Status": {"S": "pending"},              # Default transfer status
+                "Transfer_Time": {"N": "0"},                      # Initial transfer time (0 seconds, not transferred yet)
                 "Path": {"S": video_id},                          # Human-readable path
                 "Size": {"N": str(video["Size"])},                # Size of the video file
                 "MimeType": {"S": video["MimeType"]},             # MIME type of the file
