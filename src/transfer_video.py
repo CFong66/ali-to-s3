@@ -43,7 +43,7 @@ def transfer_videos(enable_notifications=True):
         end_time = time.time()
         
         # Calculate transfer time
-        transfer_time = end_time - start_time
+        transfer_time = f"{round(end_time - start_time, 2)}s"
 
         if success:
             completed_videos += 1
@@ -73,6 +73,7 @@ def transfer_videos(enable_notifications=True):
     # Retry failed videos
     for video in failed_videos[:]:
         video_path = video['video_id']['S']
+
         while retries.get(video_path, 0) <= retry_limit:
             print(f"Retrying video: {video_path}")
 
@@ -84,14 +85,16 @@ def transfer_videos(enable_notifications=True):
             end_time = time.time()
             
             # Calculate transfer time
-            transfer_time = end_time - start_time
+            transfer_time = f"{round(end_time - start_time, 2)}s"
             
             if success:
                 completed_videos += 1
                 failed_videos.remove(video)
                 update_video_status(video_path, 'completed',transfer_time)
                 break
+
             retries[video_path] += 1
+
         if retries[video_path] > retry_limit:
             print(f"Failed to transfer video {video_path} after retries.")
 
@@ -99,12 +102,12 @@ def transfer_videos(enable_notifications=True):
     if len(failed_videos) == 0:
         print("All videos transferred successfully.")
         send_sqs_notification("Success", enable_notification=enable_notifications)
+
     else:
         print("Transfer completed with failures.")
         send_sqs_notification("Failed after retries", enable_notification=enable_notifications)
 
     return len(failed_videos) == 0
-
 
 if __name__ == '__main__':
     # Upload metadata to DynamoDB before starting the transfer process
