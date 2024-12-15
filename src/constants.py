@@ -9,6 +9,6 @@ LOG_GROUP_NAME = "ali_vt_s3_ec2"
 LOG_STREAM_NAME = "ali_video_transfer_2024"
 METADATA_LOCAL_PATH = "/home/ubuntu/test_metadata.json"
 S3_METADATA_PATH = 'ali-video-metadata/metadata.json'
-TEMP_VIDEO_LOCAL_PATH = "/home/ubuntu/temp"
+TEMP_VIDEO_LOCAL_PATH = "/data"
 VIDEO_BUCKET_FOLDER = 'ali-videos'
 
