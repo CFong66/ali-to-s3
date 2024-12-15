@@ -307,17 +307,17 @@ def upload_metadata_to_dynamodb(local_file_path):
             )
             success_message = f"Uploaded metadata for video_id: {video_id}"
             print(success_message)
-            log_to_cloudwatch(success_message)  # Log success to CloudWatch
+            # log_to_cloudwatch(success_message)  # Log success to CloudWatch
 
     except ClientError as e:
         error_message = f"ClientError: {e.response['Error']['Message']}"
         print(error_message)
-        log_to_cloudwatch(error_message)  # Log error to CloudWatch
-        
+        # log_to_cloudwatch(error_message)  # Log error to CloudWatch
+
     except Exception as e:
         error_message = f"Unexpected error: {str(e)}"
         print(error_message)
-        log_to_cloudwatch(error_message)  # Log unexpected error to CloudWatch
+        # log_to_cloudwatch(error_message)  # Log unexpected error to CloudWatch
 
 # Function to send logs to CloudWatch
 def log_to_cloudwatch(message):
