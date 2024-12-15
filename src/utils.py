@@ -265,47 +265,80 @@ def upload_metadata_to_dynamodb(local_file_path):
         minutes = (seconds % 3600) // 60
         seconds = seconds % 60
         return f"{hours:02}:{minutes:02}:{seconds:02}"
+    try: 
+        # Load metadata from JSON file
+        with open(local_file_path, "r", encoding="utf-8") as file:
+            metadata = json.load(file)
 
-    # Load metadata from JSON file
-    with open(local_file_path, "r", encoding="utf-8") as file:
-        metadata = json.load(file)
+        for video_id, video_data in metadata.items():
+            # Convert size to MB and duration to h:m:s format
+            size_mb = bytes_to_mb(video_data.get("Size", 0))
+            duration_hms = seconds_to_hms(video_data.get("Duration", 0))
 
-    for video_id, video_data in metadata.items():
-        # Convert size to MB and duration to h:m:s format
-        size_mb = bytes_to_mb(video_data.get("Size", 0))
-        duration_hms = seconds_to_hms(video_data.get("Duration", 0))
+            # Prepare the item for DynamoDB
+            snapshots = video_data.get("Snapshots", {}).get("Snapshot", [])
+            snapshots_json = json.dumps(snapshots)  # Serialize Snapshots array
 
-        # Prepare the item for DynamoDB
-        snapshots = video_data.get("Snapshots", {}).get("Snapshot", [])
-        snapshots_json = json.dumps(snapshots)  # Serialize Snapshots array
+            # Prepare item for DynamoDB
+            item = {
+                "video_id": {"S": video_id},                             # Outer key as primary key
+                "Transfer_Status": {"S": "pending"},                     # Default status
+                "Transfer_Time": {"N": "0"},                             # Default transfer time (seconds)
+                "FileURL": {"S": video_data.get("FileURL", "")},         # Video file URL
+                "Title": {"S": video_data.get("Title", "")},             # Video title
+                "unique_title": {"S": video_data.get("unique_title", "")},  # Unique title field
+                "Size_MB": {"N": str(size_mb)},                          # File size in MB
+                "Duration_HMS": {"S": duration_hms},                     # Duration in h:m:s format
+                "CateId": {"N": str(video_data.get("CateId", 0))},       # Category ID
+                "CateName": {"S": video_data.get("CateName", "")},       # Category name
+                "AppId": {"S": video_data.get("AppId", "")},             # Application ID
+                "Status": {"S": video_data.get("Status", "")},           # Video status
+                "ModifyTime": {"S": video_data.get("ModifyTime", "")},   # Last modified time
+                "CreateTime": {"S": video_data.get("CreateTime", "")},   # Creation time
+                "CoverURL": {"S": video_data.get("CoverURL", "")},       # Cover image URL
+                "Snapshots": {"S": snapshots_json},                      # Snapshots (JSON string)
+                "StorageLocation": {"S": video_data.get("StorageLocation", "")},  # Storage location
+            }
 
-        # Prepare item for DynamoDB
-        item = {
-            "video_id": {"S": video_id},                             # Outer key as primary key
-            "Transfer_Status": {"S": "pending"},                     # Default status
-            "Transfer_Time": {"N": "0"},                             # Default transfer time (seconds)
-            "FileURL": {"S": video_data.get("FileURL", "")},         # Video file URL
-            "Title": {"S": video_data.get("Title", "")},             # Video title
-            "unique_title": {"S": video_data.get("unique_title", "")},  # Unique title field
-            "Size_MB": {"N": str(size_mb)},                          # File size in MB
-            "Duration_HMS": {"S": duration_hms},                     # Duration in h:m:s format
-            "CateId": {"N": str(video_data.get("CateId", 0))},       # Category ID
-            "CateName": {"S": video_data.get("CateName", "")},       # Category name
-            "AppId": {"S": video_data.get("AppId", "")},             # Application ID
-            "Status": {"S": video_data.get("Status", "")},           # Video status
-            "ModifyTime": {"S": video_data.get("ModifyTime", "")},   # Last modified time
-            "CreateTime": {"S": video_data.get("CreateTime", "")},   # Creation time
-            "CoverURL": {"S": video_data.get("CoverURL", "")},       # Cover image URL
-            "Snapshots": {"S": snapshots_json},                      # Snapshots (JSON string)
-            "StorageLocation": {"S": video_data.get("StorageLocation", "")},  # Storage location
-        }
+            # Add the item to DynamoDB
+            dynamodb_client.put_item(
+                TableName=DYNAMODB_TABLE,
+                Item=item
+            )
+            success_message = f"Uploaded metadata for video_id: {video_id}"
+            print(success_message)
+            log_to_cloudwatch(success_message)  # Log success to CloudWatch
 
-        # Add the item to DynamoDB
-        dynamodb_client.put_item(
-            TableName=DYNAMODB_TABLE,
-            Item=item
-        )
-        print(f"Uploaded metadata for video_id: {video_id}")
+    except ClientError as e:
+        error_message = f"ClientError: {e.response['Error']['Message']}"
+        print(error_message)
+        log_to_cloudwatch(error_message)  # Log error to CloudWatch
+        
+    except Exception as e:
+        error_message = f"Unexpected error: {str(e)}"
+        print(error_message)
+        log_to_cloudwatch(error_message)  # Log unexpected error to CloudWatch
+
+# Function to send logs to CloudWatch
+def log_to_cloudwatch(message):
+    try:
+        # Ensure the log stream exists
+        logs_client.create_log_stream(logGroupName=LOG_GROUP_NAME, logStreamName=LOG_STREAM_NAME)
+    except logs_client.exceptions.ResourceAlreadyExistsException:
+        pass
+
+    # Send the log event
+    timestamp = int(round(time.time() * 1000))  # Current time in milliseconds
+    logs_client.put_log_events(
+        logGroupName=LOG_GROUP_NAME,
+        logStreamName=LOG_STREAM_NAME,
+        logEvents=[
+            {
+                "timestamp": timestamp,
+                "message": message
+            }
+        ]
+    )
 
 def update_video_status(video_id, status, transfer_time=None):
     """Update the status and transfer time of a video in DynamoDB."""
