@@ -286,6 +286,7 @@ def upload_metadata_to_dynamodb(local_file_path):
             "Transfer_Time": {"N": "0"},                             # Default transfer time (seconds)
             "FileURL": {"S": video_data.get("FileURL", "")},         # Video file URL
             "Title": {"S": video_data.get("Title", "")},             # Video title
+            "unique_title": {"S": video_data.get("unique_title", "")},  # Unique title field
             "Size_MB": {"N": str(size_mb)},                          # File size in MB
             "Duration_HMS": {"S": duration_hms},                     # Duration in h:m:s format
             "CateId": {"N": str(video_data.get("CateId", 0))},       # Category ID

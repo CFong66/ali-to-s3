@@ -18,7 +18,7 @@ def transfer_videos(enable_notifications=True):
     # # Fetch all metadata
     # metadata = fetch_all_metadata()
 
-    # # Save the metadata to local file
+    # # Save the metadata (with logic to create unique file title) to local file
     # metadata_file = save_metadata_to_file(metadata,METADATA_LOCAL_PATH)
     
     # # Count videos in the metadata (saves the file locally in the process)
