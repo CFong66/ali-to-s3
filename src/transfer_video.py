@@ -15,21 +15,22 @@ def transfer_videos(enable_notifications=True):
         log_file.write("Failed Videos Log\n")
         log_file.write("=================\n")
 
-    # Fetch all metadata
-    metadata = fetch_all_metadata()
+    # # Fetch all metadata
+    # metadata = fetch_all_metadata()
 
-    # Save the metadata to local file
-    metadata_file = save_metadata_to_file(metadata,METADATA_PATH)
+    # # Save the metadata to local file
+    # metadata_file = save_metadata_to_file(metadata,METADATA_LOCAL_PATH)
     
-    # Count videos in the metadata (saves the file locally in the process)
-    video_count = count_videos_in_file(metadata_file)
+    # # Count videos in the metadata (saves the file locally in the process)
+    # video_count = count_videos_in_file(metadata_file)
     
-    # Enrich metadata with file URLs
-    metadata_with_urls = append_file_urls_to_metadata(metadata_file,video_count)
+    # # Enrich metadata with file URLs
+    # metadata_with_urls = append_file_urls_to_metadata(metadata_file,video_count)
     
-    # Save the enriched metadata to S3
-    save_metadata_to_s3(metadata_with_urls)
+    # # Save the enriched metadata to S3
+    # save_metadata_to_s3(metadata_with_urls)
 
+    # get the pending videos from DynamoDB
     pending_videos = get_pending_videos()
     failed_videos = []
     retries = {}
@@ -140,7 +141,7 @@ def transfer_videos(enable_notifications=True):
 
 if __name__ == '__main__':
     # Upload metadata to DynamoDB before starting the transfer process
-    upload_metadata_to_dynamodb(METADATA_PATH)
+    upload_metadata_to_dynamodb(METADATA_LOCAL_PATH)
 
     # Start video transfer process with notifications enabled
     job_success = transfer_videos(enable_notifications=False)

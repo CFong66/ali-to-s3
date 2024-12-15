@@ -206,7 +206,7 @@ def fetch_mezzanine_info(video_id):
     """Fetch the mezzanine information for a video using its VideoId."""
     request = GetMezzanineInfoRequest.GetMezzanineInfoRequest()
     request.set_VideoId(video_id)
-    request.set_AuthTimeout(3600)  # Set timeout for URL validity (optional)
+    request.set_AuthTimeout(7200)  # Set timeout for URL validity (optional)
 
     try:
         response = Ali_client.do_action_with_exception(request)
