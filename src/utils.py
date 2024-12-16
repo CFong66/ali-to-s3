@@ -252,6 +252,56 @@ def append_file_urls_to_metadata(file_path, total_metadata_count):
     except json.JSONDecodeError:
         print("Error decoding JSON file.")
 
+def update_video_metadata_with_final_urls(metadata_file, output_file):
+    """
+    Update video metadata with final download URLs and save to a new file.
+
+    Args:
+        metadata_file (str): Path to the JSON file containing video metadata.
+        output_file (str): Path to save the updated metadata with final download URLs.
+    """
+    def generate_final_download_url(file_url, storage_location):
+        """
+        Generate the final download URL.
+
+        Args:
+            file_url (str): The original FileURL from the metadata.
+            storage_location (str): The StorageLocation from the metadata.
+
+        Returns:
+            str: The final download URL.
+        """
+        if not file_url or not storage_location:
+            raise ValueError("Both 'FileURL' and 'StorageLocation' must be provided.")
+        
+        # Extract the relative path from the FileURL
+        relative_path = "/".join(file_url.split("/")[3:])
+        # Construct the final URL
+        return f"https://{storage_location}/{relative_path}"
+
+    try:
+        # Load the metadata from the file
+        with open(metadata_file, "r", encoding="utf-8") as f:
+            metadata = json.load(f)
+
+        # Update each video's metadata with the final download URL
+        for video_id, video_data in metadata.items():
+            try:
+                file_url = video_data.get("FileURL")
+                storage_location = video_data.get("StorageLocation")
+                video_data["FinalDownloadURL"] = generate_final_download_url(file_url, storage_location)
+            except ValueError as e:
+                print(f"Skipping video {video_id}: {e}")
+
+        # Save the updated metadata to the output file
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(metadata, f, ensure_ascii=False, indent=2)
+        
+        print(f"Updated metadata saved to {output_file}")
+
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
 def upload_metadata_to_dynamodb(local_file_path):
     """Upload metadata to DynamoDB with initial transfer status, converting size to MB and duration to h:m:s format."""
     
@@ -359,7 +409,7 @@ def update_video_status(video_id, status, transfer_time=None):
         ExpressionAttributeValues=expression_attribute_values
     )
 
-def download_and_transfer_video(file_url, video_metadata, local_folder="/tmp"):
+def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp"):
     """
     Download a video from Ali VOD using its file URL, upload it to S3, and clean up locally.
     
@@ -380,7 +430,7 @@ def download_and_transfer_video(file_url, video_metadata, local_folder="/tmp"):
     try:
         # Step 1: Download the video
         print(f"Downloading video '{video_title}' from Ali VOD...")
-        with requests.get(file_url, stream=True) as response:
+        with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
             with open(local_file_path, "wb") as video_file:
                 for chunk in response.iter_content(chunk_size=8192):  # Stream in 8 KB chunks
