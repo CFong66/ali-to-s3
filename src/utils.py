@@ -358,38 +358,14 @@ def upload_metadata_to_dynamodb(local_file_path):
             )
             success_message = f"Uploaded metadata for video_id: {video_id}"
             print(success_message)
-            # log_to_cloudwatch(success_message)  # Log success to CloudWatch
 
     except ClientError as e:
         error_message = f"ClientError: {e.response['Error']['Message']}"
         print(error_message)
-        # log_to_cloudwatch(error_message)  # Log error to CloudWatch
 
     except Exception as e:
         error_message = f"Unexpected error: {str(e)}"
         print(error_message)
-        # log_to_cloudwatch(error_message)  # Log unexpected error to CloudWatch
-
-# Function to send logs to CloudWatch
-def log_to_cloudwatch(message):
-    try:
-        # Ensure the log stream exists
-        logs_client.create_log_stream(logGroupName=LOG_GROUP_NAME, logStreamName=LOG_STREAM_NAME)
-    except logs_client.exceptions.ResourceAlreadyExistsException:
-        pass
-
-    # Send the log event
-    timestamp = int(round(time.time() * 1000))  # Current time in milliseconds
-    logs_client.put_log_events(
-        logGroupName=LOG_GROUP_NAME,
-        logStreamName=LOG_STREAM_NAME,
-        logEvents=[
-            {
-                "timestamp": timestamp,
-                "message": message
-            }
-        ]
-    )
 
 def update_video_status(video_id, status, transfer_time=None):
     """Update the status and transfer time of a video in DynamoDB."""
