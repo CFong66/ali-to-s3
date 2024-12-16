@@ -55,7 +55,7 @@ def transfer_videos(enable_notifications=True):
         end_time = time.time()
         
         # Calculate transfer time
-        transfer_time = f"{round(end_time - start_time, 2)}s"
+        transfer_time = f"{round(end_time - start_time, 2)}"
 
         if success:
             completed_videos += 1

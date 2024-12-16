@@ -371,8 +371,8 @@ def download_and_transfer_video(file_url, video_metadata, local_folder="/tmp"):
     Returns:
         bool: True if the video is successfully transferred to S3; False otherwise.
     """
-    # Replace spaces with underscores in the title
-    video_title = video_metadata.get("unique_title", "untitled")
+    # Safely extract video title
+    video_title = video_metadata.get("unique_title", {}).get("S", "untitled").strip()
     print(f"Video Title: {video_title}")
     local_file_path = os.path.join(local_folder, video_title)
     s3_file_key = f"{VIDEO_BUCKET_FOLDER}/{video_title}"
