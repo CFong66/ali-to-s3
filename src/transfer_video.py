@@ -73,6 +73,9 @@ def transfer_videos(enable_notifications=True):
             update_video_status(video_path, 'failed', transfer_time)
             print(f"Transfer of video {video_path} failed.")
 
+            # Send SNS notification for failure
+            send_sns_notification(failed_video_id=video_path)
+
             retries[video_path] = retries.get(video_path, 0) + 1
             if retries[video_path] > retry_limit:
                 failed_videos.append(video)
@@ -125,6 +128,7 @@ def transfer_videos(enable_notifications=True):
         # If retries exceeded the limit, keep in failed_videos
         if retries[video_path] > retry_limit:
             print(f"Failed to transfer video {video_path} after retries.")
+
             # Log final retry failure
             with open(FAILED_LOG_FILENAME, "a") as log_file:
                 log_message = f"Retry failed for video {video_path}\n"

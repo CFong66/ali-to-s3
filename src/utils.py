@@ -335,6 +335,7 @@ def upload_metadata_to_dynamodb(local_file_path):
                 "Transfer_Status": {"S": "pending"},                     # Default status
                 "Transfer_Time": {"N": "0"},                             # Default transfer time (seconds)
                 "FileURL": {"S": video_data.get("FileURL", "")},         # Video file URL
+                "FinalDownloadURL": {"S": video_data.get("FinalDownloadURL", "")},           # Final download URL from metadata
                 "Title": {"S": video_data.get("Title", "")},             # Video title
                 "unique_title": {"S": video_data.get("unique_title", "")},  # Unique title field
                 "Size_MB": {"N": str(size_mb)},                          # File size in MB
@@ -461,18 +462,31 @@ def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp
         print(f"Error uploading video '{video_title}' to S3: {e}")
         return False
 
-def send_sns_notification(percentage):
+def send_sns_notification(percentage=None, failed_video_id=None):
     """
     Sends an SNS notification for progress percentage.
+    If failed_video_id is provided, sends a failure notification.
     """
-    subject = f"Video Transfer Progress: {percentage}% Complete"
-    message = f"The video transfer process has reached {percentage}% completion."
-    sns_client.publish(
-        TopicArn=SNS_TOPIC_ARN,
-        Subject=subject,
-        Message=message
-    )
-    print(f"SNS Notification sent: {subject}")
+    if failed_video_id:
+        # Send failure notification with video ID
+        subject = "URGENT: Video Transfer Failure"
+        message = f"Video {failed_video_id} failed to transfer."
+        sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        print(f"Failure SNS Notification sent: {message}")
+    elif percentage is not None:
+        # Send progress notification
+        subject = f"Video Transfer Progress: {percentage}% Complete"
+        message = f"The video transfer process has reached {percentage}% completion."
+        sns_client.publish(
+            TopicArn=SNS_TOPIC_ARN,
+            Subject=subject,
+            Message=message
+        )
+        print(f"SNS Notification sent: {subject}")
 
 def send_sqs_notification(status, enable_notification=True):
     """
