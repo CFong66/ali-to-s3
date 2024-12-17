@@ -11,6 +11,136 @@ from aliyunsdkvod.request.v20170321 import GetVideoListRequest
 from aliyunsdkvod.request.v20170321 import GetMezzanineInfoRequest
 from botocore.exceptions import BotoCoreError, ClientError
 
+def transfer_videos(enable_notifications=True):
+    """
+    Transfer videos with pending status and retry failed ones.
+    Sends SNS notifications at 10% increments and SQS notification upon completion or failure.
+    Logs failed transfers in real time to S3.
+    Returns True if all videos are successfully transferred; False otherwise.
+    """
+
+    with open(FAILED_LOG_FILENAME, "w") as log_file:
+        log_file.write("Failed Videos Log\n")
+        log_file.write("=================\n")
+
+    # Open the file with utf-8 encoding
+    with open(FINAL_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
+        updated_metadata = json.load(f)
+
+    # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
+    save_metadata_to_s3(updated_metadata)
+
+    # get the pending videos from DynamoDB
+    pending_videos = get_pending_videos()
+    failed_videos = []
+    retries = {}
+    retry_limit = 5
+    total_videos = len(pending_videos)
+    completed_videos = 0
+    progress_threshold = 10  # Start at 10%
+
+    # Notify that video transfer has started
+    send_sns_notification(percentage=0)  # Notify the start of the process
+
+    for video in pending_videos:
+        video_path = video['video_id']['S']
+        download_url = video['FinalDownloadURL']['S']
+
+        # Track the start time of the transfer
+        start_time = time.time()
+
+        success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+
+        # Track the end time after the transfer completes
+        end_time = time.time()
+        
+        # Calculate transfer time
+        transfer_time = f"{round(end_time - start_time, 2)}"
+
+        if success:
+            completed_videos += 1
+            update_video_status(video_path, 'completed', transfer_time)
+            print(f"Transfer of video {video_path} completed successfully.")
+
+        else:
+            update_video_status(video_path, 'failed', transfer_time)
+            print(f"Transfer of video {video_path} failed.")
+
+            # Send SNS notification for failure
+            send_sns_notification(failed_video_id=video_path)
+
+            retries[video_path] = retries.get(video_path, 0) + 1
+            if retries[video_path] > retry_limit:
+                failed_videos.append(video)
+
+            # Log failure to local file and upload to S3
+            with open(FAILED_LOG_FILENAME, "a") as log_file:
+                log_message = f"Video {video_path} failed to transfer after {transfer_time}\n"
+                log_file.write(log_message)
+            upload_failed_log_to_s3(FAILED_LOG_FILENAME)
+            print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
+
+        # Calculate progress
+        progress = int((completed_videos / total_videos) * 100)
+
+        # Send SNS notification at every 10% increment
+        if progress >= progress_threshold:
+            send_sns_notification(progress)
+            progress_threshold += 10
+
+        # Simulate delay (optional)
+        time.sleep(0.5)  # Simulate delay for each video transfer
+
+    # Retry failed videos
+    for video in failed_videos[:]:
+        video_path = video['video_id']['S']
+        download_url = video['FinalDownloadURL']['S']
+
+        if video_path not in retries:
+            retries[video_path] = 0  # Initialize retries for this video
+
+        while retries[video_path] <= retry_limit:
+            print(f"Retrying video: {video_path}")
+
+            # Track start and end times for retries
+            start_time = time.time()
+            success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+            end_time = time.time()
+
+            # Calculate transfer time
+            transfer_time = f"{round(end_time - start_time, 2)}"
+
+            if success:
+                completed_videos += 1
+                failed_videos.remove(video)  # Remove from failed_videos on success
+                update_video_status(video_path, 'completed', transfer_time)
+                break
+
+            retries[video_path] += 1
+
+        # If retries exceeded the limit, keep in failed_videos
+        if retries[video_path] > retry_limit:
+            print(f"Failed to transfer video {video_path} after retries.")
+
+            # Log final retry failure
+            with open(FAILED_LOG_FILENAME, "a") as log_file:
+                log_message = f"Retry failed for video {video_path}\n"
+                log_file.write(log_message)
+            upload_failed_log_to_s3(FAILED_LOG_FILENAME)
+            print(f"Retry failed for video {video_path}. Check log in S3 for details.")
+
+
+        # Final notification
+    if len(failed_videos) > 0:
+        print("Transfer completed with failures.")
+        send_sqs_notification("Failed after retries", enable_notification=enable_notifications)
+        return False  # Indicate that not all videos were successfully transferred
+
+    else:
+        print("All videos transferred successfully.")
+        send_sqs_notification("Success", enable_notification=enable_notifications)
+        return True  # Indicate success
+
 def fetch_metadata_batch(page_no, page_size, sort_by="CreationTime", start_time=None, end_time=None):
     """Fetch metadata in batches with optional sorting and time range filtering."""
     request = GetVideoListRequest.GetVideoListRequest()
@@ -131,23 +261,24 @@ def save_metadata_to_file(metadata, file_path):
         # A dictionary to track duplicate titles
         title_tracker = {}
 
-        for video in metadata:
+        # Iterate over each video ID and its details
+        for video_id, video in metadata.items():
             # Extract title, creation time, and initialize ordering number
             video_title = video.get("Title", "untitled")
             creation_time = video.get("CreateTime", "unknown")
-            
+
             # Replace all spaces, dashes, colons, and other special characters with underscores
             cleaned_title = re.sub(r"[^a-zA-Z0-9\u4e00-\u9fff]+", "_", video_title)
-            
+
             # Format creation time for readability and replace special characters with underscores
             try:
-                formatted_creation_time = datetime.strptime(creation_time, '%Y-%m-%dT%H:%M:%S').strftime('%Y_%m_%dT%H_%M_%S')
+                formatted_creation_time = datetime.strptime(creation_time, '%Y-%m-%d %H:%M:%S').strftime('%Y_%m_%dT%H_%M_%S')
             except ValueError:
                 formatted_creation_time = re.sub(r"[^a-zA-Z0-9]+", "_", creation_time)
-            
+
             # Construct the base key
             base_key = f"{cleaned_title}_{formatted_creation_time}"
-            
+
             # Resolve duplicates by adding an ordering number
             if base_key in title_tracker:
                 title_tracker[base_key] += 1
@@ -155,16 +286,17 @@ def save_metadata_to_file(metadata, file_path):
             else:
                 title_tracker[base_key] = 1
                 unique_key = base_key
-            
+
             # Update the unique title in the metadata
-            video["unique_title"] = unique_key
-        
+            video["unique_title"] = unique_key + ".mp4"  # Append .mp4 for clarity
+            metadata[video_id] = video  # Ensure the metadata is updated
+
         # Save the updated metadata to the file
         with open(file_path, "w", encoding="utf-8") as file:
             json.dump(metadata, file, ensure_ascii=False, indent=2)  # Preserve Chinese characters
         print(f"Metadata saved to local file: {file_path}")
         return file_path  # Explicitly return the file path
-    
+
     except Exception as e:
         print(f"Error saving metadata file: {e}")
         sys.exit(1)
@@ -222,7 +354,7 @@ def append_file_urls_to_metadata(file_path, total_metadata_count):
     """
     Update the metadata JSON file by appending file URLs to each video metadata.
     The updates are saved directly into the original file.
-    Includes a progress tracker.
+    Includes a progress tracker and sends SNS notifications at 20% increments.
     """
     try:
         # Load metadata from file
@@ -230,6 +362,12 @@ def append_file_urls_to_metadata(file_path, total_metadata_count):
             metadata = json.load(f)
 
         appended_count = 0
+        progress_threshold = 20  # Start at 20% increment
+        failed_videos = []
+
+        # Notify start of process
+        send_sns_notification(percentage=0)
+        print("Progress Notification Sent: 0%")
 
         # Update each video with its file URL
         for index, (video_id, video_metadata) in enumerate(metadata.items(), start=1):
@@ -239,18 +377,39 @@ def append_file_urls_to_metadata(file_path, total_metadata_count):
                 appended_count += 1
                 print(f"Appended {appended_count}/{total_metadata_count} FileURL {file_url} for VideoId {video_id}.")
             else:
+                failed_videos.append(video_id)
                 print(f"Failed to fetch FileURL for VideoId {video_id}. Progress: {index}/{total_metadata_count}")
+                send_sns_notification(failed_video_id=video_id)
+
+            # Track progress and send SNS notification at 20% increments
+            progress_percentage = (index / total_metadata_count) * 100
+            if progress_percentage >= progress_threshold:
+                send_sns_notification(percentage=progress_threshold)
+                print(f"Progress Notification Sent: {progress_threshold}%")
+                progress_threshold += 20  # Next threshold
 
         # Save the updated metadata back to the original file
         with open(file_path, "w", encoding="utf-8") as f:
             json.dump(metadata, f, ensure_ascii=False, indent=2)
+
         print(f"Updated metadata saved to {file_path}. Total appended: {appended_count}/{total_metadata_count}")
+
+        # Send completion notification
+        if not failed_videos:
+            send_sns_notification(percentage=100)
+            print("Progress Notification Sent: 100% - All URLs appended successfully.")
+        else:
+            send_sns_notification(percentage=100)
+            send_sns_notification(failed_video_id=failed_videos)  # Notify about all failed videos
+            print(f"Progress Notification Sent: 100% - {len(failed_videos)} failures logged.")
 
     except FileNotFoundError:
         print("Metadata file not found.")
+        send_sns_notification(subject="Metadata Update Failed", message="Error: Metadata file not found.")
 
     except json.JSONDecodeError:
         print("Error decoding JSON file.")
+        send_sns_notification(subject="Metadata Update Failed", message="Error: Failed to decode metadata JSON file.")
 
 def update_video_metadata_with_final_urls(metadata_file, output_file):
     """
