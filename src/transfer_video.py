@@ -152,6 +152,7 @@ def transfer_videos(enable_notifications=True):
 if __name__ == '__main__':
     # Upload metadata to DynamoDB before starting the transfer process
     upload_metadata_to_dynamodb(METADATA_LOCAL_PATH)
+    print("upload metadata to DB completed")
 
     # # Start video transfer process with notifications enabled
     # job_success = transfer_videos(enable_notifications=False)
