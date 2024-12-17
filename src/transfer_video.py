@@ -15,27 +15,27 @@ def transfer_videos(enable_notifications=True):
         log_file.write("Failed Videos Log\n")
         log_file.write("=================\n")
 
-    # # Fetch all metadata
-    # metadata = fetch_all_metadata()
+    # Fetch all metadata
+    metadata = fetch_all_metadata()
 
-    # # Save the metadata (with logic to create unique file title) to local file
-    # metadata_file = save_metadata_to_file(metadata,METADATA_LOCAL_PATH)
+    # Save the metadata (with logic to create unique file title) to local file
+    metadata_file = save_metadata_to_file(metadata,METADATA_LOCAL_PATH)
     
-    # # Count videos in the metadata (saves the file locally in the process)
-    # video_count = count_videos_in_file(metadata_file)
+    # Count videos in the metadata (saves the file locally in the process)
+    video_count = count_videos_in_file(metadata_file)
     
-    # # Enrich metadata with file URLs
-    # append_file_urls_to_metadata(METADATA_LOCAL_PATH,video_count)
+    # Enrich metadata with file URLs
+    append_file_urls_to_metadata(METADATA_LOCAL_PATH,video_count)
 
-    # # create final download url for the metadata
-    # update_video_metadata_with_final_urls(METADATA_LOCAL_PATH, FINAL_METADATA_LOCAL_PATH)
+    # create final download url for the metadata
+    update_video_metadata_with_final_urls(METADATA_LOCAL_PATH, FINAL_METADATA_LOCAL_PATH)
     
-    # # Open the file with utf-8 encoding
-    # with open(FINAL_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
-    #     updated_metadata = json.load(f)
+    # Open the file with utf-8 encoding
+    with open(FINAL_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
+        updated_metadata = json.load(f)
 
-    # # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
-    # save_metadata_to_s3(updated_metadata)
+    # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
+    save_metadata_to_s3(updated_metadata)
 
     # get the pending videos from DynamoDB
     pending_videos = get_pending_videos()
@@ -153,11 +153,11 @@ if __name__ == '__main__':
     # Upload metadata to DynamoDB before starting the transfer process
     upload_metadata_to_dynamodb(METADATA_LOCAL_PATH)
 
-    # Start video transfer process with notifications enabled
-    job_success = transfer_videos(enable_notifications=False)
+    # # Start video transfer process with notifications enabled
+    # job_success = transfer_videos(enable_notifications=False)
 
-    # Print result
-    if job_success:
-        print("All videos transferred successfully.")
-    else:
-        print("Some videos failed to transfer. Check the logs for details.")
+    # # Print result
+    # if job_success:
+    #     print("All videos transferred successfully.")
+    # else:
+    #     print("Some videos failed to transfer. Check the logs for details.")

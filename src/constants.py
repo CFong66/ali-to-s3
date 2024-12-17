@@ -1,4 +1,3 @@
-ALI_CLOUD_PATH = 'aliyun:test-ali-video'
 ALI_VOD_REGION = "ap-southeast-1"
 AWS_LOG_BUCKET = 'ali-vt-log-bucket'
 AWS_VIDEO_BUCKET = 'ali-video-storing-bucket'
