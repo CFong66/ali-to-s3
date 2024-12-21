@@ -11,6 +11,8 @@ from aliyunsdkvod.request.v20170321 import GetVideoListRequest
 from aliyunsdkvod.request.v20170321 import GetMezzanineInfoRequest
 from botocore.exceptions import BotoCoreError, ClientError
 
+import random
+
 def transfer_videos(enable_notifications=True):
     """
     Transfer videos with pending status and retry failed ones.
@@ -30,7 +32,7 @@ def transfer_videos(enable_notifications=True):
     # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
     save_metadata_to_s3(updated_metadata)
 
-    # get the pending videos from DynamoDB
+    # Get the pending videos from DynamoDB
     pending_videos = get_pending_videos()
     failed_videos = []
     retries = {}
@@ -42,6 +44,10 @@ def transfer_videos(enable_notifications=True):
     # Notify that video transfer has started
     send_sns_notification(percentage=0)  # Notify the start of the process
 
+    # Select a video to simulate failure (you can adjust the condition here)
+    video_to_fail = random.choice(pending_videos)  # Randomly pick a video to fail for testing purposes
+    print(f"Simulating failure for video {video_to_fail['video_id']['S']}...")
+
     for video in pending_videos:
         video_path = video['video_id']['S']
         download_url = video['FinalDownloadURL']['S']
@@ -49,11 +55,15 @@ def transfer_videos(enable_notifications=True):
         # Track the start time of the transfer
         start_time = time.time()
 
-        success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+        # Simulate failure for the selected video
+        if video == video_to_fail:
+            success = False  # Force failure
+        else:
+            success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
 
         # Track the end time after the transfer completes
         end_time = time.time()
-        
+
         # Calculate transfer time
         transfer_time = f"{round(end_time - start_time, 2)}"
 
@@ -79,7 +89,6 @@ def transfer_videos(enable_notifications=True):
                 log_file.write(log_message)
             upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
             print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
-
 
         # Calculate progress
         progress = int((completed_videos / total_videos) * 100)
@@ -129,6 +138,12 @@ def transfer_videos(enable_notifications=True):
                 log_file.write(log_message)
             upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
             print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
+
+    # Check for overall success
+    if completed_videos == total_videos:
+        return True
+    else:
+        return False
 
 
 def fetch_metadata_batch(page_no, page_size, sort_by="CreationTime", start_time=None, end_time=None):
