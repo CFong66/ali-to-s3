@@ -1,10 +1,10 @@
 import json
 import time
 import re
-from datetime import datetime
 import os
 import sys
 import requests
+from datetime import datetime
 from constants import *
 from config import *
 from aliyunsdkvod.request.v20170321 import GetVideoListRequest
@@ -77,8 +77,9 @@ def transfer_videos(enable_notifications=True):
             with open(FAILED_LOG_FILENAME, "a") as log_file:
                 log_message = f"Video {video_path} failed to transfer after {transfer_time}\n"
                 log_file.write(log_message)
-            upload_failed_log_to_s3(FAILED_LOG_FILENAME)
+            upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
             print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
+
 
         # Calculate progress
         progress = int((completed_videos / total_videos) * 100)
@@ -122,24 +123,13 @@ def transfer_videos(enable_notifications=True):
         if retries[video_path] > retry_limit:
             print(f"Failed to transfer video {video_path} after retries.")
 
-            # Log final retry failure
+            # Log failure to local file and upload to S3
             with open(FAILED_LOG_FILENAME, "a") as log_file:
-                log_message = f"Retry failed for video {video_path}\n"
+                log_message = f"Video {video_path} failed to transfer after {transfer_time}\n"
                 log_file.write(log_message)
-            upload_failed_log_to_s3(FAILED_LOG_FILENAME)
-            print(f"Retry failed for video {video_path}. Check log in S3 for details.")
+            upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
+            print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
 
-
-        # Final notification
-    if len(failed_videos) > 0:
-        print("Transfer completed with failures.")
-        send_sqs_notification("Failed after retries", enable_notification=enable_notifications)
-        return False  # Indicate that not all videos were successfully transferred
-
-    else:
-        print("All videos transferred successfully.")
-        send_sqs_notification("Success", enable_notification=enable_notifications)
-        return True  # Indicate success
 
 def fetch_metadata_batch(page_no, page_size, sort_by="CreationTime", start_time=None, end_time=None):
     """Fetch metadata in batches with optional sorting and time range filtering."""
@@ -647,15 +637,61 @@ def get_pending_videos():
     )
     return response.get('Items', [])
 
-def upload_failed_log_to_s3(log_file):
+def upload_log_to_s3(log_file, log_type="failed"):
     """
-    Upload the failed log file to the S3 bucket.
+    Upload a log file to S3. It can be used for failure logs or completed video count logs.
+    Args:
+        log_file (str): Path to the log file.
+        log_type (str): Type of log ("failed" or "completed"). Determines the S3 folder structure.
     """
     s3_client = boto3.client("s3")
-    s3_key = f"{LOG_FOLDER}/{log_file}"
+    
+    # Use different S3 folders for different log types
+    s3_key = f"{LOG_FOLDER}/{log_type}/{os.path.basename(log_file)}"
     
     try:
         s3_client.upload_file(log_file, AWS_LOG_BUCKET, s3_key)
-        print(f"Uploaded failed log to S3: s3://{AWS_LOG_BUCKET}/{s3_key}")
+        print(f"Uploaded {log_type} log to S3: s3://{AWS_LOG_BUCKET}/{s3_key}")
     except Exception as e:
-        print(f"Failed to upload log to S3: {e}")
+        print(f"Failed to upload {log_type} log to S3: {e}")
+
+def count_completed_videos_in_dynamodb():
+    """
+    Count the number of videos with 'completed' status in DynamoDB.
+    """
+    response = dynamodb_client.scan(
+        TableName=DYNAMODB_TABLE,
+        FilterExpression="Transfer_Status = :completed",
+        ExpressionAttributeValues={":completed": {"S": "completed"}}
+    )
+    return len(response["Items"])
+
+def retry_failed_videos():
+    """
+    Retry transferring videos with 'failed' status in DynamoDB.
+    """
+    response = dynamodb_client.scan(
+        TableName=DYNAMODB_TABLE,
+        FilterExpression="Transfer_Status = :failed",
+        ExpressionAttributeValues={":failed": {"S": "failed"}}
+    )
+    failed_videos = response["Items"]
+    for video in failed_videos:
+        video_path = video["video_id"]["S"]
+        download_url = video["FinalDownloadURL"]["S"]
+        print(f"Retrying failed video: {video_path}")
+        transfer_failed_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+
+def transfer_failed_video(download_url, video, local_path):
+    """
+    Transfer a single video.
+    """
+    success = download_and_transfer_video(download_url, video, local_path)
+    video_path = video["video_id"]["S"]
+
+    if success:
+        update_video_status(video_path, "completed")
+        print(f"Video {video_path} transferred successfully.")
+    else:
+        update_video_status(video_path, "failed")
+        print(f"Video {video_path} failed to transfer.")
