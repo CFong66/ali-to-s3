@@ -9,8 +9,7 @@ def main():
     """
      # Step 1: Load the 10 selected metadata
     print("Loading metadata for testing...")
-    metadata_file = "testing_metadata.json"  # Path to the file created with 10 videos
-    with open(metadata_file, "r", encoding="utf-8") as f:
+    with open(METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
         metadata = json.load(f)
 
     print("Counting videos in metadata...")
