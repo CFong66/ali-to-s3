@@ -4,14 +4,12 @@ import re
 import os
 import sys
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from constants import *
 from config import *
 from aliyunsdkvod.request.v20170321 import GetVideoListRequest
 from aliyunsdkvod.request.v20170321 import GetMezzanineInfoRequest
 from botocore.exceptions import BotoCoreError, ClientError
-
-import random
 
 def transfer_videos(enable_notifications=True):
     """
@@ -32,7 +30,7 @@ def transfer_videos(enable_notifications=True):
     # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
     save_metadata_to_s3(updated_metadata)
 
-    # Get the pending videos from DynamoDB
+    # get the pending videos from DynamoDB
     pending_videos = get_pending_videos()
     failed_videos = []
     retries = {}
@@ -44,10 +42,6 @@ def transfer_videos(enable_notifications=True):
     # Notify that video transfer has started
     send_sns_notification(percentage=0)  # Notify the start of the process
 
-    # Select a video to simulate failure (you can adjust the condition here)
-    video_to_fail = random.choice(pending_videos)  # Randomly pick a video to fail for testing purposes
-    print(f"Simulating failure for video {video_to_fail['video_id']['S']}...")
-
     for video in pending_videos:
         video_path = video['video_id']['S']
         download_url = video['FinalDownloadURL']['S']
@@ -55,15 +49,11 @@ def transfer_videos(enable_notifications=True):
         # Track the start time of the transfer
         start_time = time.time()
 
-        # Simulate failure for the selected video
-        if video == video_to_fail:
-            success = False  # Force failure
-        else:
-            success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+        success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
 
         # Track the end time after the transfer completes
         end_time = time.time()
-
+        
         # Calculate transfer time
         transfer_time = f"{round(end_time - start_time, 2)}"
 
@@ -89,6 +79,7 @@ def transfer_videos(enable_notifications=True):
                 log_file.write(log_message)
             upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
             print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
+
 
         # Calculate progress
         progress = int((completed_videos / total_videos) * 100)
@@ -138,12 +129,6 @@ def transfer_videos(enable_notifications=True):
                 log_file.write(log_message)
             upload_log_to_s3(FAILED_LOG_FILENAME, log_type="failed")
             print(f"Video {video_path} failed to transfer. Check log in S3 for details.")
-
-    # Check for overall success
-    if completed_videos == total_videos:
-        return True
-    else:
-        return False
 
 
 def fetch_metadata_batch(page_no, page_size, sort_by="CreationTime", start_time=None, end_time=None):
@@ -550,56 +535,84 @@ def update_video_status(video_id, status, transfer_time=None):
         ExpressionAttributeValues=expression_attribute_values
     )
 
-def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp"):
+def download_and_transfer_video(video_metadata, local_folder="/tmp"):
     """
-    Download a video from Ali VOD using its file URL, upload it to S3, and clean up locally.
+    Download a video from Ali VOD using its metadata, upload it to S3 with tagging, and clean up locally.
     
     Args:
-        file_url (str): The URL of the video file in Ali VOD.
-        video_metadata (dict): Metadata of the video, including the Title.
+        video_metadata (dict): Metadata of the video, including VideoId, Title, Size, and CreationTime.
         local_folder (str): The local folder to temporarily store the downloaded video.
 
     Returns:
         bool: True if the video is successfully transferred to S3; False otherwise.
     """
-    # Safely extract video title
-    video_title = video_metadata.get("unique_title", {}).get("S", "untitled").strip()
-    print(f"Video Title: {video_title}")
-    local_file_path = os.path.join(local_folder, video_title)
-    s3_file_key = f"{VIDEO_BUCKET_FOLDER}/{video_title}"
+    # Extract relevant metadata fields
+    video_id = video_metadata.get("VideoId", "unknown_id")
+    title = video_metadata.get("Title", "Untitled")
+    size = video_metadata.get("Size", 0)
+    creation_time_str = video_metadata.get("CreationTime", "1970-01-01T00:00:00Z")
+    creation_time = datetime.strptime(creation_time_str, "%Y-%m-%dT%H:%M:%SZ")
+    download_url = video_metadata.get("FinalDownloadURL")
+
+    cutoff_date = datetime(2024, 1, 1)
+    folder = "post-2024" if creation_time >= cutoff_date else "pre-2024"
+    s3_file_key = f"{folder}/{video_id}"
+
+    local_file_path = os.path.join(local_folder, video_id)
 
     try:
         # Step 1: Download the video
-        print(f"Downloading video '{video_title}' from Ali VOD...")
+        print(f"Downloading video '{video_id}' from Ali VOD...")
         with requests.get(download_url, stream=True) as response:
             response.raise_for_status()
             with open(local_file_path, "wb") as video_file:
                 for chunk in response.iter_content(chunk_size=8192):  # Stream in 8 KB chunks
                     video_file.write(chunk)
 
-        print(f"Download complete for '{video_title}'.")
+        print(f"Download complete for '{video_id}'.")
 
-        # Step 2: Upload the video to S3
-        print(f"Uploading video '{video_title}' to S3...")
+        # Step 2: Upload the video to S3 with tags
+        print(f"Uploading video '{video_id}' to S3...")
         s3_client.upload_file(
             local_file_path,
             AWS_VIDEO_BUCKET,
             s3_file_key
         )
-        print(f"Video '{video_title}' successfully uploaded to S3.")
+
+        # Add tags to the uploaded file
+        tags = [
+            {"Key": "Title", "Value": title},
+            {"Key": "Size", "Value": str(size)},
+            {"Key": "CreationTime", "Value": creation_time_str},
+        ]
+        s3_client.put_object_tagging(
+            Bucket=AWS_VIDEO_BUCKET,
+            Key=s3_file_key,
+            Tagging={"TagSet": tags}
+        )
+        print(f"Video '{video_id}' successfully uploaded and tagged in S3.")
 
         # Step 3: Delete the local file
         if os.path.exists(local_file_path):
             os.remove(local_file_path)
             print(f"Local file '{local_file_path}' deleted after upload.")
 
+        # Step 4: Check for SNS notification condition
+        if folder == "post-2024" and creation_time == cutoff_date:
+            sns_client.publish(
+                TopicArn=SNS_TOPIC_ARN,
+                Message="All post-01.01.2024 videos have been downloaded and transferred.",
+                Subject="Video Transfer Complete"
+            )
+            print("SNS notification sent for post-2024 video transfer completion.")
+
         return True
 
     except requests.exceptions.RequestException as e:
-        print(f"Error downloading video '{video_title}': {e}")
+        print(f"Error downloading video '{video_id}': {e}")
         return False
     except Exception as e:
-        print(f"Error uploading video '{video_title}' to S3: {e}")
+        print(f"Error uploading video '{video_id}' to S3: {e}")
         return False
 
 def send_sns_notification(percentage=None, failed_video_id=None):
@@ -643,14 +656,18 @@ def send_sqs_notification(status, enable_notification=True):
         print(f"SQS Notification skipped: {status}")
 
 def get_pending_videos():
-    """Retrieve video metadata with 'pending' status from DynamoDB."""
+    """Retrieve video metadata with 'pending' status from DynamoDB, sorted by CreationTime in descending order."""
     response = dynamodb_client.scan(
         TableName=DYNAMODB_TABLE,
         FilterExpression="#Transfer_Status = :pending",
-        ExpressionAttributeNames={'#Transfer_Status': 'Transfer_Status'},
-        ExpressionAttributeValues={':pending': {'S': 'pending'}}
+        ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status"},
+        ExpressionAttributeValues={":pending": {"S": "pending"}}
     )
-    return response.get('Items', [])
+
+    items = response.get('Items', [])
+    # Sort items by CreationTime in descending order
+    items.sort(key=lambda x: datetime.strptime(x["CreationTime"]["S"], "%Y-%m-%dT%H:%M:%SZ"), reverse=True)
+    return items
 
 def upload_log_to_s3(log_file, log_type="failed"):
     """
@@ -710,3 +727,15 @@ def transfer_failed_video(download_url, video, local_path):
     else:
         update_video_status(video_path, "failed")
         print(f"Video {video_path} failed to transfer.")
+
+# Define Melbourne timezone
+MELBOURNE_TZ = timezone(timedelta(hours=11))
+
+def get_melbourne_time() -> str:
+    """
+    Get the current time in Melbourne local timezone (UTC+11 during daylight saving).
+
+    Returns:
+        str: The formatted time string (e.g., "Sat Dec 21 05:05:34 2024").
+    """
+    return datetime.now(MELBOURNE_TZ).strftime("%a %b %d %H:%M:%S %Y")

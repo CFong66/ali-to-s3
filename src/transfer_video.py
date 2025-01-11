@@ -7,13 +7,15 @@ def main():
     """
     Main workflow for video transfer preparation and execution.
     """
-     # Step 1: Load the 10 selected metadata
-    print("Loading metadata for testing...")
-    with open(METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
-        metadata = json.load(f)
-
+    # Step 1: Fetch and prepare metadata
+    print("Fetching metadata...")
+    metadata = fetch_all_metadata()
+    
+    print("Saving metadata to local file...")
+    metadata_file = save_metadata_to_file(metadata, METADATA_LOCAL_PATH)
+    
     print("Counting videos in metadata...")
-    video_count = len(metadata)
+    video_count = count_videos_in_file(metadata_file)
     
     print("Appending file URLs to metadata...")
     append_file_urls_to_metadata(METADATA_LOCAL_PATH, video_count)
@@ -43,7 +45,7 @@ def main():
 
         # Log completed video count to local file and upload to S3
         with open(COMPLETED_LOG_FILENAME, "a") as log_file:
-            log_message = f"Completed videos: {completed_videos}/{video_count} - {time.ctime()}\n"
+            log_message = f"Completed videos: {completed_videos}/{video_count} - {get_melbourne_time()}\n"
             log_file.write(log_message)
 
         print(f"Progress logged. Check completed video count log in S3 for details.")

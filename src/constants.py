@@ -12,4 +12,3 @@ METADATA_LOCAL_PATH = "/home/ubuntu/test_metadata.json"
 S3_METADATA_PATH = 'ali-video-metadata/metadata.json'
 TEMP_VIDEO_LOCAL_PATH = "/data"
 VIDEO_BUCKET_FOLDER = 'ali-videos'
-
