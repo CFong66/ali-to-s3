@@ -535,7 +535,7 @@ def update_video_status(video_id, status, transfer_time=None):
         ExpressionAttributeValues=expression_attribute_values
     )
 
-def download_and_transfer_video(video_metadata, local_folder="/tmp"):
+def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp"):
     """
     Download a video from Ali VOD using its metadata, upload it to S3 with tagging, and clean up locally.
     
@@ -547,16 +547,35 @@ def download_and_transfer_video(video_metadata, local_folder="/tmp"):
         bool: True if the video is successfully transferred to S3; False otherwise.
     """
     # Extract relevant metadata fields
-    video_id = video_metadata.get("VideoId", "unknown_id")
-    title = video_metadata.get("Title", "Untitled")
-    size = video_metadata.get("Size", 0)
-    creation_time_str = video_metadata.get("CreationTime", "1970-01-01T00:00:00Z")
-    creation_time = datetime.strptime(creation_time_str, "%Y-%m-%dT%H:%M:%SZ")
-    download_url = video_metadata.get("FinalDownloadURL")
+    video_id_raw = video_metadata.get("video_id", {"S": "unknown_id"})
+    video_id = video_id_raw.get("S", "unknown_id") if isinstance(video_id_raw, dict) else video_id_raw
+
+    title_raw = video_metadata.get("Title", {"S": "Untitled"})
+    title = title_raw.get("S", "Untitled") if isinstance(title_raw, dict) else title_raw
+
+    size_raw = video_metadata.get("Size_MB", {"N": "0"})  # Assuming size may be numeric
+    size = float(size_raw.get("N", 0)) if isinstance(size_raw, dict) else float(size_raw)
+
+    creation_time_raw = video_metadata.get("CreateTime", "1970-01-01T00:00:00Z")
+    if isinstance(creation_time_raw, dict):
+        creation_time_str = creation_time_raw.get("S", "1970-01-01T00:00:00Z")
+    else:
+        creation_time_str = creation_time_raw
+    creation_time = datetime.strptime(creation_time_str, "%Y-%m-%d %H:%M:%S")
+
+    download_url_raw = video_metadata.get("FinalDownloadURL", "unknown_url")
+    if isinstance(download_url_raw, dict):  # Handle DynamoDB format
+        download_url = download_url_raw.get("S", "unknown_url")
+    else:
+        download_url = download_url_raw
 
     cutoff_date = datetime(2024, 1, 1)
     folder = "post-2024" if creation_time >= cutoff_date else "pre-2024"
-    s3_file_key = f"{folder}/{video_id}"
+    
+    file_extension = ".mp4"
+
+    # Append the file extension to the video ID
+    s3_file_key = f"{folder}/{video_id}{file_extension}"
 
     local_file_path = os.path.join(local_folder, video_id)
 
@@ -581,10 +600,24 @@ def download_and_transfer_video(video_metadata, local_folder="/tmp"):
 
         # Add tags to the uploaded file
         tags = [
-            {"Key": "Title", "Value": title},
-            {"Key": "Size", "Value": str(size)},
-            {"Key": "CreateTime", "Value": creation_time_str},
+            {"Key": "Title", "Value": str(title)},
+            {"Key": "Size_MB", "Value": str(size)},
+            {"Key": "CreateTime", "Value": str(creation_time_str)},
         ]
+
+        # Define allowed characters for S3 tag values
+        allowed_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_=:.@/"
+
+        # Sanitize tag values
+        for tag in tags:
+            # Truncate tag values to a maximum of 128 characters
+            tag["Value"] = tag["Value"][:128]
+            
+            # Replace invalid characters with underscores
+            tag["Value"] = "".join(
+                char if char in allowed_characters else "_" for char in tag["Value"]
+            ).strip()
+
         s3_client.put_object_tagging(
             Bucket=AWS_VIDEO_BUCKET,
             Key=s3_file_key,
