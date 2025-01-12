@@ -605,8 +605,12 @@ def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp
             {"Key": "CreateTime", "Value": str(creation_time_str)},
         ]
 
-        # Define allowed characters for S3 tag values
-        allowed_characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 -_=:.@/"
+        # Define invalid characters for S3 tag values
+        invalid_characters = "&<>\\"
+        control_characters = ''.join(chr(i) for i in range(32)) + chr(127)  # ASCII 0-31 and 127
+
+        # Combine all invalid characters
+        all_invalid_characters = set(invalid_characters + control_characters)
 
         # Sanitize tag values
         for tag in tags:
@@ -615,7 +619,7 @@ def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp
             
             # Replace invalid characters with underscores
             tag["Value"] = "".join(
-                char if char in allowed_characters else "_" for char in tag["Value"]
+                char if char not in all_invalid_characters else "_" for char in tag["Value"]
             ).strip()
 
         s3_client.put_object_tagging(
