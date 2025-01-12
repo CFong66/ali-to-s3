@@ -583,7 +583,7 @@ def download_and_transfer_video(video_metadata, local_folder="/tmp"):
         tags = [
             {"Key": "Title", "Value": title},
             {"Key": "Size", "Value": str(size)},
-            {"Key": "CreationTime", "Value": creation_time_str},
+            {"Key": "CreateTime", "Value": creation_time_str},
         ]
         s3_client.put_object_tagging(
             Bucket=AWS_VIDEO_BUCKET,
@@ -656,18 +656,14 @@ def send_sqs_notification(status, enable_notification=True):
         print(f"SQS Notification skipped: {status}")
 
 def get_pending_videos():
-    """Retrieve video metadata with 'pending' status from DynamoDB, sorted by CreationTime in descending order."""
+    """Retrieve video metadata with 'pending' status from DynamoDB."""
     response = dynamodb_client.scan(
         TableName=DYNAMODB_TABLE,
         FilterExpression="#Transfer_Status = :pending",
-        ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status"},
-        ExpressionAttributeValues={":pending": {"S": "pending"}}
+        ExpressionAttributeNames={'#Transfer_Status': 'Transfer_Status'},
+        ExpressionAttributeValues={':pending': {'S': 'pending'}}
     )
-
-    items = response.get('Items', [])
-    # Sort items by CreationTime in descending order
-    items.sort(key=lambda x: datetime.strptime(x["CreationTime"]["S"], "%Y-%m-%dT%H:%M:%SZ"), reverse=True)
-    return items
+    return response.get('Items', [])
 
 def upload_log_to_s3(log_file, log_type="failed"):
     """
