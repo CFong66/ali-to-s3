@@ -1,6 +1,6 @@
 ALI_VOD_REGION = "ap-southeast-1"
-AWS_LOG_BUCKET = 'ali-vt-log-bucket'
-AWS_VIDEO_BUCKET = 'ali-video-storing-bucket'
+AWS_LOG_BUCKET = 'ezpz-web'
+AWS_VIDEO_BUCKET = 'house-price-cf'
 COMPLETED_LOG_FILENAME = "/home/ubuntu/completed_video_count.log"
 DYNAMODB_TABLE = 'ali_video_metadata'
 FAILED_LOG_FILENAME = "transfer_failed.log"

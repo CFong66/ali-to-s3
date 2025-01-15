@@ -24,7 +24,7 @@ def transfer_videos(enable_notifications=True):
         log_file.write("=================\n")
 
     # Open the file with utf-8 encoding
-    with open(FINAL_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
+    with open(METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
         updated_metadata = json.load(f)
 
     # Save the metadata to S3, this will ensure Chinese characters are preserved in the final output
