@@ -7,9 +7,15 @@ import requests
 from datetime import datetime, timedelta, timezone
 from constants import *
 from config import *
+import logging
 from aliyunsdkvod.request.v20170321 import GetVideoListRequest
 from aliyunsdkvod.request.v20170321 import GetMezzanineInfoRequest
 from botocore.exceptions import BotoCoreError, ClientError
+
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def transfer_videos(enable_notifications=True):
     """
@@ -45,11 +51,12 @@ def transfer_videos(enable_notifications=True):
     for video in pending_videos:
         video_path = video['video_id']['S']
         download_url = video['FinalDownloadURL']['S']
+        object_key = video.get("ObjectKey", {}).get("S", "")
 
         # Track the start time of the transfer
         start_time = time.time()
 
-        success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+        success = download_and_transfer_video(download_url, video, object_key, TEMP_VIDEO_LOCAL_PATH)
 
         # Track the end time after the transfer completes
         end_time = time.time()
@@ -96,6 +103,7 @@ def transfer_videos(enable_notifications=True):
     for video in failed_videos[:]:
         video_path = video['video_id']['S']
         download_url = video['FinalDownloadURL']['S']
+        object_key = video.get("ObjectKey", {}).get("S", "")
 
         if video_path not in retries:
             retries[video_path] = 0  # Initialize retries for this video
@@ -105,7 +113,7 @@ def transfer_videos(enable_notifications=True):
 
             # Track start and end times for retries
             start_time = time.time()
-            success = download_and_transfer_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
+            success = download_and_transfer_video(download_url, video, object_key, TEMP_VIDEO_LOCAL_PATH)
             end_time = time.time()
 
             # Calculate transfer time
@@ -240,12 +248,70 @@ def fetch_all_metadata():
 
     return all_metadata
 
-def save_metadata_to_file(metadata, file_path):
+def fetch_all_docs_and_match(metadata):
     """
-    Save metadata to a local file with unique title renaming logic.
-    The naming convention for S3 key and file names is: 
-    Title_CreationTime_OrderingNumber (if duplicates exist).
-    All special characters are replaced with underscores for smoother file names.
+    Fetch all documents from the API and match them against provided metadata.
+
+    Args:
+        metadata (dict): Metadata fetched from the source.
+
+    Returns:
+        tuple: Matched metadata and a list of video IDs.
+    """
+    matched_metadata = {}
+    matched_video_ids = []
+    all_video_ids = set()
+    page = 1
+
+    try:
+        while True:
+            params = {
+                "page": page,
+                "limit": PAGE_SIZE
+            }
+
+            response = requests.get(FILTER_API_URL, params=params, timeout=10)
+            response.raise_for_status()
+
+            data = response.json()
+            current_docs = data.get("docs", [])
+
+            # Collect video IDs from the current page
+            video_ids = {doc["video_id"] for doc in current_docs}  # Adjust key if different
+            all_video_ids.update(video_ids)
+
+            print(f"Page {page}: Fetched {len(current_docs)} items")
+
+            # Match with metadata
+            for video_id in video_ids:
+                if video_id in metadata:
+                    matched_metadata[video_id] = metadata[video_id]
+                    matched_video_ids.append(video_id)
+
+            # Check if there's a next page
+            if not data.get("hasNextPage", False):
+                break
+
+            page += 1
+
+    except Exception as e:
+        print(f"Error during fetch: {e}")
+
+    print(f"\nTotal video IDs fetched: {len(all_video_ids)}")
+    print(f"Matched metadata count: {len(matched_metadata)}")
+    return matched_metadata, matched_video_ids
+
+def save_metadata_to_file(metadata, file_path, object_keys):
+    """
+    Save metadata to a local file with unique title renaming logic and include object keys.
+
+    Args:
+        metadata (dict): Metadata dictionary to save.
+        file_path (str): Path to the file where metadata will be saved.
+        object_keys (dict): Dictionary of video_id to object_key mappings.
+
+    Returns:
+        str: The path to the saved file.
     """
     try:
         # A dictionary to track duplicate titles
@@ -279,7 +345,14 @@ def save_metadata_to_file(metadata, file_path):
 
             # Update the unique title in the metadata
             video["unique_title"] = unique_key + ".mp4"  # Append .mp4 for clarity
-            metadata[video_id] = video  # Ensure the metadata is updated
+
+            # Add the object key if available
+            object_key = object_keys.get(video_id)
+            if object_key:
+                video["object_key"] = object_key
+
+            # Ensure the metadata is updated
+            metadata[video_id] = video
 
         # Save the updated metadata to the file
         with open(file_path, "w", encoding="utf-8") as file:
@@ -477,6 +550,9 @@ def upload_metadata_to_dynamodb(local_file_path):
             # Prepare the item for DynamoDB
             snapshots = video_data.get("Snapshots", {}).get("Snapshot", [])
             snapshots_json = json.dumps(snapshots)  # Serialize Snapshots array
+            
+            # Include the object key from metadata
+            object_key = video_data.get("object_key", "")
 
             # Prepare item for DynamoDB
             item = {
@@ -498,6 +574,7 @@ def upload_metadata_to_dynamodb(local_file_path):
                 "CoverURL": {"S": video_data.get("CoverURL", "")},       # Cover image URL
                 "Snapshots": {"S": snapshots_json},                      # Snapshots (JSON string)
                 "StorageLocation": {"S": video_data.get("StorageLocation", "")},  # Storage location
+                "ObjectKey": {"S": object_key},                          # Object key
             }
 
             # Add the item to DynamoDB
@@ -535,7 +612,116 @@ def update_video_status(video_id, status, transfer_time=None):
         ExpressionAttributeValues=expression_attribute_values
     )
 
-def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp"):
+def generate_lesson_video_ids(video_id):
+    """
+    Generate lesson and video IDs based on the provided video ID.
+
+    Args:
+        video_id (str): The ID of the video.
+
+    Returns:
+        str: A formatted object key in the format "lesson/lessonid/videoid",
+             or None if an error occurs.
+    """
+    api_url = f"{BASE_API_URL}/{video_id}"
+    
+    try:
+        response = requests.post(api_url, timeout=10) # Set a timeout for the request
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Request Error: {str(e)}")
+        return None, None
+
+    # Handle different status codes
+    status_code = response.status_code
+    
+    if status_code == 200:
+        try:
+            data = response.json()
+            lesson_id = data.get('lessonId')
+            video_id = data.get('videoId')
+            if lesson_id and video_id:
+                # Format the object key
+                object_key = f"lesson/{lesson_id}/{video_id}"
+                return object_key
+            else:
+                logger.error("Error: Missing lessonId or videoId in response")
+                return None
+        except ValueError:
+            logger.error("Error: Invalid JSON response for 200 status")
+            return None, None
+
+    elif status_code == 400:
+        try:
+            data = response.json()
+            if data.get('message') == 'S3 video already exists':
+                # Call function to handle existing video
+                return get_existing_video_info(video_id)
+            else:
+                logger.error(f"400 Error with message: {data.get('message', 'Unknown error')}")
+                return None, None
+        except ValueError:
+            logger.error("Error: Invalid JSON response for 400 status")
+            return None, None
+
+    elif status_code == 404:
+        try:
+            data = response.json()
+            message = data.get('message')
+            if message == "AliCloud video not found":
+                logger.error("Error: The requested video was not found on AliCloud.")
+                return None, None
+            elif message == "Lesson not found":
+                logger.error("Error: The associated lesson was not found.")
+                return None, None
+            else:
+                logger.error(f"404 Error with unknown message: {message}")
+                return None, None
+        except ValueError:
+            logger.error("Error: Invalid JSON response for 404 status")
+            return None, None
+
+    else:
+        logger.error(f"Error: Received unexpected status code {status_code}")
+        return None, None
+
+def get_existing_video_info(video_id):
+    """
+    Retrieve lesson and video IDs for an existing video and format them into an object key.
+
+    Args:
+        video_id (str): The ID of the existing video.
+
+    Returns:
+        str: A formatted object key in the format "lesson/lessonid/videoid",
+             or None if an error occurs.
+    """
+    try:
+        # Hypothetical endpoint for existing video info
+        response = requests.get(
+            f"{BASE_API_URL}/{video_id}", timeout=10  # Set a timeout for the request
+        )
+        if response.status_code == 200:
+            try:
+                data = response.json()
+                lesson_id = data.get('lessonId')
+                video_id = data.get('videoId')
+                if lesson_id and video_id:
+                    # Format the object key
+                    object_key = f"lesson/{lesson_id}/{video_id}"
+                    return object_key
+                else:
+                    logger.error("Error: Missing lessonId or videoId in response")
+                    return None
+            except ValueError:
+                logger.error("Error: Invalid JSON response for existing video")
+                return None, None
+        logger.error(f"Error fetching existing video: {response.status_code}")
+        return None, None
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error in get_existing_video_info: {str(e)}")
+        return None, None
+
+def download_and_transfer_video(download_url, video_metadata, object_key, local_folder="/tmp"):
     """
     Download a video from Ali VOD using its metadata, upload it to S3 with tagging, and clean up locally.
     
@@ -568,14 +754,11 @@ def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp
         download_url = download_url_raw.get("S", "unknown_url")
     else:
         download_url = download_url_raw
-
-    cutoff_date = datetime(2024, 1, 1)
-    folder = "post-2024" if creation_time >= cutoff_date else "pre-2024"
     
     file_extension = ".mp4"
 
     # Append the file extension to the video ID
-    s3_file_key = f"{folder}/{video_id}{file_extension}"
+    s3_file_key = f"{object_key}{file_extension}"
 
     local_file_path = os.path.join(local_folder, video_id)
 
@@ -633,15 +816,6 @@ def download_and_transfer_video(download_url, video_metadata, local_folder="/tmp
         if os.path.exists(local_file_path):
             os.remove(local_file_path)
             print(f"Local file '{local_file_path}' deleted after upload.")
-
-        # Step 4: Check for SNS notification condition
-        if folder == "post-2024" and creation_time == cutoff_date:
-            sns_client.publish(
-                TopicArn=SNS_TOPIC_ARN,
-                Message="All post-01.01.2024 videos have been downloaded and transferred.",
-                Subject="Video Transfer Complete"
-            )
-            print("SNS notification sent for post-2024 video transfer completion.")
 
         return True
 

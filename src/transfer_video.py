@@ -11,8 +11,14 @@ def main():
     print("Fetching metadata...")
     metadata = fetch_all_metadata()
     
+    print("Matching metadata against API results...")
+    matched_metadata, matched_video_ids = fetch_all_docs_and_match(metadata)
+    
+    print("Get the lesson ID for all videos...")
+    object_key = generate_lesson_video_ids(matched_video_ids)
+    
     print("Saving metadata to local file...")
-    metadata_file = save_metadata_to_file(metadata, METADATA_LOCAL_PATH)
+    metadata_file = save_metadata_to_file(matched_metadata, METADATA_LOCAL_PATH, object_key)
     
     print("Counting videos in metadata...")
     video_count = count_videos_in_file(metadata_file)
@@ -21,7 +27,7 @@ def main():
     append_file_urls_to_metadata(METADATA_LOCAL_PATH, video_count)
     
     print("Creating final download URLs...")
-    update_video_metadata_with_final_urls(METADATA_LOCAL_PATH, FINAL_METADATA_LOCAL_PATH)
+    update_video_metadata_with_final_urls(METADATA_LOCAL_PATH, FINAL_METADATA_LOCAL_PATH) 
     
     print("Loading final metadata...")
     with open(FINAL_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:

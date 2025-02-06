@@ -12,3 +12,6 @@ METADATA_LOCAL_PATH = "/home/ubuntu/test_metadata.json"
 S3_METADATA_PATH = 'ali-video-metadata/metadata.json'
 TEMP_VIDEO_LOCAL_PATH = "/data"
 VIDEO_BUCKET_FOLDER = 'ali-videos'
+FILTER_API_URL = "https://uat-api.jiangren.com.au/videos/ali-cloud/valid-ids"  
+PAGE_SIZE = 100  
+BASE_API_URL = "https://uat-api.jiangren.com.au/s3-videos/ali-cloud"
