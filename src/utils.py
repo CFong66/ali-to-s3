@@ -4,7 +4,9 @@ import re
 import os
 import sys
 import requests
+import hvac
 from datetime import datetime, timedelta, timezone
+from api import update_video_status_frontend
 from constants import *
 from config import *
 import logging
@@ -12,11 +14,12 @@ from aliyunsdkvod.request.v20170321 import GetVideoListRequest
 from aliyunsdkvod.request.v20170321 import GetMezzanineInfoRequest
 from botocore.exceptions import BotoCoreError, ClientError
 
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def transfer_videos(enable_notifications=True):
+def transfer_videos(enable_notifications=False):
     """
     Transfer videos with pending status and retry failed ones.
     Sends SNS notifications at 10% increments and SQS notification upon completion or failure.
@@ -51,10 +54,12 @@ def transfer_videos(enable_notifications=True):
         video_path = video['video_id']['S']
         download_url = video['FinalDownloadURL']['S']
         object_key = video.get("ObjectKey", {}).get("S", "")
+        s3_video_id = object_key.split('/')[-1]
 
         # Track the start time of the transfer
         start_time = time.time()
-
+        
+        update_video_status_frontend(s3_video_id, 'uploading')
         success = download_and_transfer_video(download_url, video, object_key, TEMP_VIDEO_LOCAL_PATH)
 
         # Track the end time after the transfer completes
@@ -66,11 +71,14 @@ def transfer_videos(enable_notifications=True):
         if success:
             completed_videos += 1
             update_video_status(video_path, 'completed', transfer_time)
-            print(f"Transfer of video {video_path} completed successfully.")
+            update_video_status_frontend(s3_video_id, 'uploaded')
+            print(f"Transfer of video {s3_video_id} completed successfully.")
 
         else:
             update_video_status(video_path, 'failed', transfer_time)
-            print(f"Transfer of video {video_path} failed.")
+            update_video_status_frontend(s3_video_id, 'upload_failed')
+
+            print(f"Transfer of video {s3_video_id} failed.")
 
             # Send SNS notification for failure
             send_sns_notification(failed_video_id=video_path)
@@ -246,59 +254,6 @@ def fetch_all_metadata():
     all_metadata = {**remaining_batch, **first_batch}
 
     return all_metadata
-
-def fetch_all_docs_and_match(metadata):
-    """
-    Fetch all documents from the API and match them against provided metadata.
-
-    Args:
-        metadata (dict): Metadata fetched from the source.
-
-    Returns:
-        tuple: Matched metadata and a list of video IDs.
-    """
-    matched_metadata = {}
-    matched_video_ids = []
-    all_video_ids = set()
-    page = 1
-
-    try:
-        while True:
-            params = {
-                "page": page,
-                "limit": PAGE_SIZE
-            }
-
-            response = requests.get(FILTER_API_URL, params=params, timeout=10)
-            response.raise_for_status()
-
-            data = response.json()
-            current_docs = data.get("docs", [])
-
-            # Collect video IDs from the current page
-            video_ids = {doc["video_id"] for doc in current_docs}  # Adjust key if different
-            all_video_ids.update(video_ids)
-
-            print(f"Page {page}: Fetched {len(current_docs)} items")
-
-            # Match with metadata
-            for video_id in video_ids:
-                if video_id in metadata:
-                    matched_metadata[video_id] = metadata[video_id]
-                    matched_video_ids.append(video_id)
-
-            # Check if there's a next page
-            if not data.get("hasNextPage", False):
-                break
-
-            page += 1
-
-    except Exception as e:
-        print(f"Error during fetch: {e}")
-
-    print(f"\nTotal video IDs fetched: {len(all_video_ids)}")
-    print(f"Matched metadata count: {len(matched_metadata)}")
-    return matched_metadata, matched_video_ids
 
 def save_metadata_to_file(metadata, file_path, object_keys):
     """
@@ -589,131 +544,25 @@ def upload_metadata_to_dynamodb(local_file_path):
 
 def update_video_status(video_id, status, transfer_time=None):
     """Update the status and transfer time of a video in DynamoDB."""
+    # Base update expression and attributes
     update_expression = 'SET #Transfer_Status = :status'
     expression_attribute_values = {':status': {'S': status}}
+    expression_attribute_names = {"#Transfer_Status": "Transfer_Status"}
 
     # Conditionally add transfer time update
     if transfer_time is not None:
         update_expression += ', #Transfer_Time = :transfer_time'
         expression_attribute_values[':transfer_time'] = {'N': str(transfer_time)}
+        expression_attribute_names["#Transfer_Time"] = "Transfer_Time"
 
     # Update the item in DynamoDB
     dynamodb_client.update_item(
         TableName=DYNAMODB_TABLE,
         Key={'video_id': {'S': video_id}},
         UpdateExpression=update_expression,
-        ExpressionAttributeNames={"#Transfer_Status": "Transfer_Status", "#Transfer_Time": "Transfer_Time"},
+        ExpressionAttributeNames=expression_attribute_names,
         ExpressionAttributeValues=expression_attribute_values
     )
-
-def generate_lesson_video_ids(video_id):
-    """
-    Generate lesson and video IDs based on the provided video ID.
-
-    Args:
-        video_id (str): The ID of the video.
-
-    Returns:
-        str: A formatted object key in the format "lesson/lessonid/videoid",
-             or None if an error occurs.
-    """
-    api_url = f"{BASE_API_URL}/{video_id}"
-    
-    try:
-        response = requests.post(api_url, timeout=10) # Set a timeout for the request
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Request Error: {str(e)}")
-        return None, None
-
-    # Handle different status codes
-    status_code = response.status_code
-    
-    if status_code == 200:
-        try:
-            data = response.json()
-            lesson_id = data.get('lessonId')
-            video_id = data.get('videoId')
-            if lesson_id and video_id:
-                # Format the object key
-                object_key = f"lesson/{lesson_id}/{video_id}"
-                return object_key
-            else:
-                logger.error("Error: Missing lessonId or videoId in response")
-                return None
-        except ValueError:
-            logger.error("Error: Invalid JSON response for 200 status")
-            return None, None
-
-    elif status_code == 400:
-        try:
-            data = response.json()
-            if data.get('message') == 'S3 video already exists':
-                # Call function to handle existing video
-                return get_existing_video_info(video_id)
-            else:
-                logger.error(f"400 Error with message: {data.get('message', 'Unknown error')}")
-                return None, None
-        except ValueError:
-            logger.error("Error: Invalid JSON response for 400 status")
-            return None, None
-
-    elif status_code == 404:
-        try:
-            data = response.json()
-            message = data.get('message')
-            if message == "AliCloud video not found":
-                logger.error("Error: The requested video was not found on AliCloud.")
-                return None, None
-            elif message == "Lesson not found":
-                logger.error("Error: The associated lesson was not found.")
-                return None, None
-            else:
-                logger.error(f"404 Error with unknown message: {message}")
-                return None, None
-        except ValueError:
-            logger.error("Error: Invalid JSON response for 404 status")
-            return None, None
-
-    else:
-        logger.error(f"Error: Received unexpected status code {status_code}")
-        return None, None
-
-def get_existing_video_info(video_id):
-    """
-    Retrieve lesson and video IDs for an existing video and format them into an object key.
-
-    Args:
-        video_id (str): The ID of the existing video.
-
-    Returns:
-        str: A formatted object key in the format "lesson/lessonid/videoid",
-             or None if an error occurs.
-    """
-    try:
-        # Hypothetical endpoint for existing video info
-        response = requests.get(
-            f"{BASE_API_URL}/{video_id}", timeout=10  # Set a timeout for the request
-        )
-        if response.status_code == 200:
-            try:
-                data = response.json()
-                lesson_id = data.get('lessonId')
-                video_id = data.get('videoId')
-                if lesson_id and video_id:
-                    # Format the object key
-                    object_key = f"lesson/{lesson_id}/{video_id}"
-                    return object_key
-                else:
-                    logger.error("Error: Missing lessonId or videoId in response")
-                    return None
-            except ValueError:
-                logger.error("Error: Invalid JSON response for existing video")
-                return None, None
-        logger.error(f"Error fetching existing video: {response.status_code}")
-        return None, None
-    except requests.exceptions.RequestException as e:
-        logger.error(f"Error in get_existing_video_info: {str(e)}")
-        return None, None
 
 def download_and_transfer_video(download_url, video_metadata, object_key, local_folder="/tmp"):
     """
@@ -753,7 +602,7 @@ def download_and_transfer_video(download_url, video_metadata, object_key, local_
 
     # Append the file extension to the video ID
     s3_file_key = f"{object_key}{file_extension}"
-
+    
     local_file_path = os.path.join(local_folder, video_id)
 
     try:
@@ -780,6 +629,7 @@ def download_and_transfer_video(download_url, video_metadata, object_key, local_
             {"Key": "Title", "Value": str(title)},
             {"Key": "Size_MB", "Value": str(size)},
             {"Key": "CreateTime", "Value": str(creation_time_str)},
+            {"Key": "Video_Type", "Value":"AliCloud_Video"},
         ]
 
         # Define invalid characters for S3 tag values
@@ -799,12 +649,24 @@ def download_and_transfer_video(download_url, video_metadata, object_key, local_
                 char if char not in all_invalid_characters else "_" for char in tag["Value"]
             ).strip()
 
-        s3_client.put_object_tagging(
-            Bucket=AWS_VIDEO_BUCKET,
-            Key=s3_file_key,
-            Tagging={"TagSet": tags}
-        )
-        print(f"Video '{video_id}' successfully uploaded and tagged in S3.")
+            # Replace spaces and invalid characters with underscores
+            tag["Value"] = re.sub(r"[^\w\-_.:]", "_", tag["Value"])  # Allows alphanumeric, `_`, `-`, `.`, `:`
+
+            
+            # Ensure tag values are not empty after sanitization
+            if not tag["Value"]:
+                tag["Value"] = "default_value"
+
+        try:
+            s3_client.put_object_tagging(
+                Bucket=AWS_VIDEO_BUCKET,
+                Key=s3_file_key,
+                Tagging={"TagSet": tags}
+            )
+            print(f"Video '{video_id}' successfully uploaded and tagged in S3.")
+        except Exception as e:
+            print(f"Error tagging video '{video_id}': {e}")
+            # Optionally log this error or mark the video for review
 
         # Step 3: Delete the local file
         if os.path.exists(local_file_path):
@@ -888,47 +750,6 @@ def upload_log_to_s3(log_file, log_type="failed"):
     except Exception as e:
         print(f"Failed to upload {log_type} log to S3: {e}")
 
-def count_completed_videos_in_dynamodb():
-    """
-    Count the number of videos with 'completed' status in DynamoDB.
-    """
-    response = dynamodb_client.scan(
-        TableName=DYNAMODB_TABLE,
-        FilterExpression="Transfer_Status = :completed",
-        ExpressionAttributeValues={":completed": {"S": "completed"}}
-    )
-    return len(response["Items"])
-
-def retry_failed_videos():
-    """
-    Retry transferring videos with 'failed' status in DynamoDB.
-    """
-    response = dynamodb_client.scan(
-        TableName=DYNAMODB_TABLE,
-        FilterExpression="Transfer_Status = :failed",
-        ExpressionAttributeValues={":failed": {"S": "failed"}}
-    )
-    failed_videos = response["Items"]
-    for video in failed_videos:
-        video_path = video["video_id"]["S"]
-        download_url = video["FinalDownloadURL"]["S"]
-        print(f"Retrying failed video: {video_path}")
-        transfer_failed_video(download_url, video, TEMP_VIDEO_LOCAL_PATH)
-
-def transfer_failed_video(download_url, video, local_path):
-    """
-    Transfer a single video.
-    """
-    success = download_and_transfer_video(download_url, video, local_path)
-    video_path = video["video_id"]["S"]
-
-    if success:
-        update_video_status(video_path, "completed")
-        print(f"Video {video_path} transferred successfully.")
-    else:
-        update_video_status(video_path, "failed")
-        print(f"Video {video_path} failed to transfer.")
-
 # Define Melbourne timezone
 MELBOURNE_TZ = timezone(timedelta(hours=11))
 
@@ -940,3 +761,44 @@ def get_melbourne_time() -> str:
         str: The formatted time string (e.g., "Sat Dec 21 05:05:34 2024").
     """
     return datetime.now(MELBOURNE_TZ).strftime("%a %b %d %H:%M:%S %Y")
+
+def log_debug(message):
+    """Helper function to log debug messages."""
+    with open(LOG_DEBUG_FILE, "a") as log:
+        log.write(f"{get_melbourne_time()} - {message}\n")
+    print(message)  # Also print to console for real-time updates
+
+def get_api_token():
+    client = hvac.Client(
+        vault_url= VAULT_URL,
+        token=os.getenv('VAULT_TOKEN')
+    )
+    
+    try:
+        secret = client.secrets.kv.v2.read_secret_version(
+            path='alicloud-sync/uat',  
+            mount_point='secret'
+        )
+        
+        return secret['data']['data']['internal_secret']  
+    except Exception as e:
+        log_debug(f"Error fetching secret from Vault: {e}")
+        raise
+
+def trigger_transcoding_api(video_id):
+            api_url = TRIGGER_TRANSCODING_API.format(video_id=video_id)
+            api_token = ""
+
+            headers = {
+                "internal_secret": api_token,
+                "Content-Type": "application/json"
+            }
+
+            try:
+                response = requests.patch(api_url, headers=headers)
+                if response.status_code == 200 and response.json().get('success'):
+                    log_debug(f"Transcoding triggered successfully for video ID: {video_id}")
+                else:
+                    log_debug(f"Failed to trigger transcoding for video ID: {video_id}. Response: {response.text}")
+            except Exception as e:
+                log_debug(f"Error calling transcoding API for video ID: {video_id}: {e}")

@@ -2,90 +2,90 @@ import json
 from constants import *
 from config import *
 from utils import *
+from api import *
+from filter import *
 
 def main():
     """
     Main workflow for video transfer preparation and execution.
+    Logs key steps and errors to a local debug log file for troubleshooting.
     """
-    # Step 1: Fetch and prepare metadata
-    # print("Fetching metadata...")
-    # metadata = fetch_all_metadata()
-    
-    # print("Saving metadata to local file...")
-    # metadata_file = save_metadata_to_file(metadata, METADATA_LOCAL_PATH)
-    
-    print("Loading metadata from local file...")
+
     try:
-        with open(METADATA_LOCAL_PATH, "r", encoding="utf-8") as file:
-            metadata = json.load(file)
-    except FileNotFoundError:
-        print("Error: Local metadata file not found. Please ensure 'local_metadata.json' exists.")
-        return
-    except json.JSONDecodeError:
-        print("Error: Failed to decode JSON from the local metadata file.")
-        return
-    
-    print("Matching metadata against API results...")
-    matched_metadata, matched_video_ids = fetch_all_docs_and_match(metadata)
-    
-    print("Get the lesson ID for all videos...")
-    object_key = generate_lesson_video_ids(matched_video_ids)
-    
-    print("Saving metadata to local file...")
-    metadata_file = save_metadata_to_file(matched_metadata, TEST_METADATA_LOCAL_PATH, object_key)
-    
-    print("Counting videos in metadata...")
-    video_count = count_videos_in_file(metadata_file)
-    
-    # print("Appending file URLs to metadata...")
-    # append_file_urls_to_metadata(METADATA_LOCAL_PATH, video_count)
-    
-    # print("Creating final download URLs...")
-    # update_video_metadata_with_final_urls(METADATA_LOCAL_PATH, FINAL_METADATA_LOCAL_PATH)
-    
-    print("Loading final metadata...")
-    with open(TEST_METADATA_LOCAL_PATH, "r", encoding="utf-8") as f:
-        updated_metadata = json.load(f)
-    
-    print("Saving metadata to S3...")
-    save_metadata_to_s3(updated_metadata)
-    
-    print("Uploading metadata to DynamoDB...")
-    upload_metadata_to_dynamodb(TEST_METADATA_LOCAL_PATH)
-    print("Metadata upload to DynamoDB completed.")
+        # Step 1: Fetch or load metadata
+        log_debug("Loading metadata from local file...")
+        try:
+            with open(METADATA_LOCAL_PATH, "r", encoding="utf-8") as file:
+                metadata = json.load(file)
+        except FileNotFoundError as e:
+            log_debug(f"Error: Local metadata file not found. {e}")
+            return
+        except json.JSONDecodeError as e:
+            log_debug(f"Error: Failed to decode JSON from the local metadata file. {e}")
+            return
 
-    # Step 2: Start video transfer process
-    print("Starting video transfer process...")
-    transfer_videos(enable_notifications=True)
-
-    # Step 3: Verify completion and retry failed videos
-    while True:
-        completed_videos = count_completed_videos_in_dynamodb()
-        print(f"Completed videos: {completed_videos}/{video_count}")
-
-        # Log completed video count to local file and upload to S3
-        with open(COMPLETED_LOG_FILENAME, "a") as log_file:
-            log_message = f"Completed videos: {completed_videos}/{video_count} - {get_melbourne_time()}\n"
-            log_file.write(log_message)
-
-        print(f"Progress logged. Check completed video count log in S3 for details.")
-
-        if completed_videos == video_count:
-            print("All videos transferred successfully.")
-            send_sns_notification(f"Total {video_count} videos transferred successfully.")
-            send_sqs_notification("Success", enable_notification=True)  # Send SQS notification on success
+        # Process metadata
+        log_debug("Matching metadata against API results...")
+        try:
+            matched_metadata, matched_video_ids = fetch_all_docs_and_match(metadata)
             
-            # Final step: Upload completed log to S3 after all transfers are done
-            upload_log_to_s3(COMPLETED_LOG_FILENAME, log_type="completed")
-            print(f"Final completed video count uploaded to S3: {COMPLETED_LOG_FILENAME}")
-            break
+        except Exception as e:
+            log_debug(f"Error in matching metadata: {e}")
+            return
 
-        else:
-            print("Retrying failed videos...")
-            retry_failed_videos()
-    
-    # Final status message
-    print("Workflow completed.")
+        log_debug("Generating lesson IDs for videos...")
+        try:
+            object_key,s3_video_ids = process_video_ids(matched_video_ids)
+            
+        except Exception as e:
+            log_debug(f"Error in generating lesson IDs: {e}")
+            return
 
-if __name__ == '__main__':
+        log_debug("Saving updated metadata to local file...")
+        try:
+            metadata_file = save_metadata_to_file(matched_metadata, TEST_METADATA_LOCAL_PATH, object_key)
+        except Exception as e:
+            log_debug(f"Error in saving metadata: {e}")
+            return
+
+        log_debug("Counting videos in metadata...")
+        try:
+            video_count = count_videos_in_file(metadata_file)
+            log_debug(f"Total videos to transfer: {video_count}")
+        except Exception as e:
+            log_debug(f"Error in counting videos: {e}")
+            return
+
+        # Upload metadata
+        log_debug("Saving metadata to S3...")
+        try:
+            save_metadata_to_s3(matched_metadata)
+        except Exception as e:
+            log_debug(f"Error in saving metadata to S3: {e}")
+            return
+
+        log_debug("Uploading metadata to DynamoDB...")
+        try:
+            upload_metadata_to_dynamodb(TEST_METADATA_LOCAL_PATH)
+            log_debug("Metadata upload to DynamoDB completed.")
+        except Exception as e:
+            log_debug(f"Error in uploading metadata to DynamoDB: {e}")
+            return
+        
+        # Step 2: Start video transfer process
+        log_debug("Starting video transfer process...")
+        try:
+            transfer_videos(enable_notifications=True)
+        except Exception as e:
+            log_debug(f"Error during video transfer process: {e}")
+            return
+        
+        # Trigger transcoding for each video
+        for s3_video_id in s3_video_ids:
+            trigger_transcoding_api(s3_video_id)
+
+    except Exception as e:
+        log_debug(f"Unexpected error in main workflow: {e}")
+
+if __name__ == "__main__":
     main()
